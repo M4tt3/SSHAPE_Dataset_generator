@@ -1,0 +1,59 @@
+{
+    "shape": {
+        "id" : "REQUIRED;UNIQUE",
+        "file" : "REQUIRED",
+        "name" : "=lambda shape: '.'.join(shape['file'].split('.')[:-1]);UNIQUE",
+        "allowed_colors" : "all",
+        "allowed_materials" : "all",
+        "margin" : 0,
+        "scaling" : "none",
+        "random_rotation" : "none",
+        "fixed_rotation" : [0, 0, 0],
+        "flip" : "none",
+        "snap_to_plane" : "none"
+    },
+    "material" : {
+        "id" : "REQUIRED",
+        "file" : "REQUIRED",
+        "allowed_colors" : "all",
+        "degradation" : "none",
+        "emission" : "none"
+    },
+    "color" : {
+        "name" : "REQUIRED;UNIQUE",
+        "id" : "REQUIRED",
+        "hex" : "REQUIRED",
+        "emission" : "=lambda color: color['hex']",
+        "opacity" : 1
+    },
+    "emission" : {
+        "color" : "dynamic",
+        "min" : 0,
+        "max" : 1,
+        "step" : 0.5
+    },
+    "scaling" : {
+        "min" : 0.2,
+        "max" : 1,
+        "step" : 0.4,
+        "consistent" : "all",
+        "max_scaling_difference" : "none"
+    },
+    "random_rotation" : {
+        "snap" : [20, 20, 20],
+        "min_bounds" : [0, 0, 0],
+        "max_bounds" : [360, 360, 360],
+        "auto_snap_face" : false
+    },
+    "degradation" : {
+        "file" : "REQUIRED",
+        "min" : 0,
+        "max" : 1,
+        "step" : 0.5
+    },
+    "flip" : {
+        "xy" : "REQUIRED",
+        "xz" : "REQUIRED",
+        "yz" : "REQUIRED"
+    }
+}

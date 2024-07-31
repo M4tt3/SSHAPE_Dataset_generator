@@ -1,0 +1,161 @@
+{
+    "objects": [
+        {
+            "id" : 0,
+            "file" : "pyramid.blend",
+            "allowed_colors" : "all",
+            "allowed_materials" : ["matte", "metal"],
+            "min_distance" : 0.2,
+            "scaling" : "$consistent_scaling",
+            "random_rotation" : {
+                "auto_snap_face" : true
+            }, 
+            "snap_to_plane" : true
+        },
+        {
+            "file" : "cylinder.blend",
+            "id" : 1,
+            "allowed_colors" : ["white", "yellow"],
+            "allowed_materials" : ["lighting"],
+            "min_distance" : 0.2,
+            "scaling" : "$free_scaling",
+            "random_rotation" : {
+                "snap" : [0, 90, 20],
+                "max_bounds" : [0, 90, 180]
+            },
+            "snap_to_plane" : true
+        }
+    ],
+    "decoys" : [
+        {
+            "id" : 100,
+            "name" : "pen",
+            "file" : "pen.blend",
+            "allowed_colors" : "all",
+            "allowed_materials" : ["matte", "metal"],
+            "min_distance" : 0.2,
+            "scaling" : {
+                "min" : 0.5,
+                "max" : 1,
+                "step" : 0.25,
+                "consistent" : "all"
+            },
+            "fixed_rotation" : [90, 0, 0],
+            "random_rotation" : {
+                "max_bounds" : [0, 180, 0],
+                "snap" : [0, 30, 0]
+            },
+            "flip" : {
+                "xz" : "random",
+                "xy" : false,
+                "yz" : false
+            },
+            "snap_to_plane" : true
+        }
+    ],
+    "materials" : [
+        {
+            "id" : 0,
+            "name" : "matte",
+            "file" : "matte.blend",
+            "allowed_colors" : "all",
+            "degradation" : {
+                "file" : "degrade_matte.blend",
+                "min" : 0.01,
+                "max" : 0.16,
+                "step" : 0.05
+            }
+        },
+        {
+            "id" : 1,
+            "name" : "lighting",
+            "file": "lighting.blend",
+            "allowed_colors" : "all",
+            "degradation" : "none",
+            "emission" : {
+                "color" : "dynamic",
+                "min" : 0.1,
+                "max" : 0.4,
+                "step" : 0.1
+            }
+        },
+        {
+            "id" : 2,
+            "name" : "metal",
+            "file" : "metal.blend",
+            "allowed_colors" : "all",
+            "degradation" : {
+                "file" : "degrade_metal.blend",
+                "min" : 0,
+                "max" : 0.24,
+                "step" : 0.8
+            }
+        }
+
+    ],
+    "macros" : {
+        "consistent_scaling" : {
+            "min" : 0.1,
+            "max" : 1,
+            "step" : 0.3,
+            "consistent" : "all"
+        },
+        "free_scaling" : {
+            "min" : 0.2,
+            "max" : 1,
+            "step" : 0.2,
+            "consistent" : "none",
+            "max_scaling_difference" : 0.4
+        }
+    },
+    "colors" : [
+        {
+            "name" : "white",
+            "id" : 1,
+            "hex" : "#ffffff",
+            "opacity" : 1
+        },
+        {
+            "name" : "black",
+            "id" : 2,
+            "hex" : "#101010",
+            "opacity" : 1,
+            "emission" : "none"
+        },
+        {
+            "name" : "red",
+            "id" : 5,
+            "hex" : "#c93333",
+            "opacity" : 1,
+            "emission" : "#c93333"
+        },
+        {
+            "name" : "green",
+            "id" : 4,
+            "hex" : "##367325",
+            "opacity" : 1,
+            "emission" : "#367325"
+        },
+        {
+            "name" : "yellow",
+            "id" : 6,
+            "hex" : "##ffdc52",
+            "opacity" : 1,
+            "emission" : "#ffdc52"
+        },
+        {
+            "name" : "blue",
+            "id" : 7,
+            "hex" : "##3456bf",
+            "opacity" : 1,
+            "emission" : "#3456bf"
+        },
+        {
+            "name" : "purple",
+            "id" : 8,
+            "hex" : "#5e2b80",
+            "opacity" : 1,
+            "emission" : "#5e2b80"
+        }
+    ]
+}

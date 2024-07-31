@@ -1,0 +1,4 @@
+test.*
+output.json
+data/
+__pycache__/
