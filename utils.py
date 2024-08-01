@@ -3,22 +3,22 @@ Copyright 2024-present, Matteo Bicchi
 All rights reserved
 
 
-This file is part of SSHAPE_Dataset.
+This file is part of SSHAPE_Dataset_generator.
 
-SSHAPE_Dataset is free software: you can redistribute it and/or modify it under the terms of the 
+SSHAPE_Dataset_generator is free software: you can redistribute it and/or modify it under the terms of the 
 GNU General Public License as published by the Free Software Foundation, either version 3 of the 
 License, or any later version.
 
-SSHAPE_Dataset is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without 
+SSHAPE_Dataset_generator is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without 
 even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General 
 Public License for more details.
 
-You should have received a copy of the GNU General Public License along with SSHAPE_Dataset. 
+You should have received a copy of the GNU General Public License along with SSHAPE_Dataset_generator. 
 If not, see <https://www.gnu.org/licenses/>.
 """
 
 import argparse, sys, random
-from SSHAPE_Dataset.errors import *
+from SSHAPE_Dataset_generator.errors import *
 from math import radians
 import mathutils #type:ignore
 from mathutils import Vector, Matrix, Euler #type:ignore
@@ -40,12 +40,12 @@ def setup_argparser():
                     help="Height (in pixels) of every image.")
     ap.add_argument("--use_gpu", default=1, type=int,
                     help="Whether or not to use gpu fo rendering (1 for yes, 0 for no).")
-    ap.add_argument("--image_format", default="jpg",
-                    help="Saving format for images, must be supported bu OpenCV")
-    ap.add_argument("--create_segmentations", default=1, type=int,
-                    help="Whether or not to create segmentation ground truth data (1 for yes, 0 for no).")
-    ap.add_argument("--create_bounding_boxes", default=1, type=int,
-                    help="Whether or not to create bounding boxes ground truth data (1 for yes, 0 for no).")
+    #ap.add_argument("--image_format", default="jpg",
+    #                help="Saving format for images, must be supported bu OpenCV")
+    #ap.add_argument("--create_segmentations", default=1, type=int,
+    #                help="Whether or not to create segmentation ground truth data (1 for yes, 0 for no).")
+    #ap.add_argument("--create_bounding_boxes", default=1, type=int,
+    #                help="Whether or not to create bounding boxes ground truth data (1 for yes, 0 for no).")
     # --------------- INPUT OPTIONS ---------------
     ap.add_argument("--materials_dir", default="./materials",
                     help="Directory in which materials are stored (in .blend format), every time an object " + 
@@ -60,8 +60,8 @@ def setup_argparser():
     ap.add_argument("--base_scene", default=None,
                     help="Base blender scene, objects coordinates are relative to its origin, the working" + 
                     "area is centerd on the origin on x and y starts on z=0.")
-    ap.add_argument("--resume", default=None,
-                    help="Path of the checkpoint file to resume a paused rendering.")
+    #ap.add_argument("--resume", default=None,
+    #                help="Path of the checkpoint file to resume a paused rendering.")
     ap.add_argument("--config", default=None,
                     help="Config file (JSON) to use instead of command line arguments")
     # --------------- SETTINGS ---------------

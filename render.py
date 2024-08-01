@@ -3,29 +3,27 @@ Copyright 2024-present, Matteo Bicchi
 All rights reserved
 
 
-This file is part of SSHAPE_Dataset.
+This file is part of SSHAPE_Dataset_generator.
 
-SSHAPE_Dataset is free software: you can redistribute it and/or modify it under the terms of the 
+SSHAPE_Dataset_generator is free software: you can redistribute it and/or modify it under the terms of the 
 GNU General Public License as published by the Free Software Foundation, either version 3 of the 
 License, or any later version.
 
-SSHAPE_Dataset is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without 
+SSHAPE_Dataset_generator is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without 
 even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General 
 Public License for more details.
 
-You should have received a copy of the GNU General Public License along with SSHAPE_Dataset. 
+You should have received a copy of the GNU General Public License along with SSHAPE_Dataset_generator. 
 If not, see <https://www.gnu.org/licenses/>.
 """
 
 from tqdm import tqdm
 from datetime import datetime
 from math import sin, cos, radians, degrees, sqrt
-import random, os
+import random, os, json
 from random import randint
-from SSHAPE_Dataset.errors import *
-from SSHAPE_Dataset.utils import *
-import time
-from pprint import pprint
+from SSHAPE_Dataset_generator.errors import *
+from SSHAPE_Dataset_generator.utils import *
 
 #blender
 import bpy, bpy_extras, mathutils #type: ignore
@@ -56,6 +54,7 @@ class DatasetRenderer:
         self.camera_obj.rotation_euler = (0, 0, 0)
 
         scene.collection.objects.link(self.camera_obj)
+        scene.camera = self.camera_obj
 
         render_args = bpy.context.scene.render
         render_args.engine = "CYCLES"
@@ -67,6 +66,10 @@ class DatasetRenderer:
             cycles_prefs = bpy.context.preferences.addons['cycles'].preferences 
             cycles_prefs.compute_device_type = 'CUDA'
             bpy.context.scene.cycles.device = 'GPU'
+            bpy.context.preferences.addons["cycles"].preferences.get_devices()
+            for d in bpy.context.preferences.addons["cycles"].preferences.devices:
+                d["use"] = 1 # Using all devices, include GPU and CPU
+                print(d["name"], d["use"])
 
         bpy.data.worlds['World'].cycles.sample_as_light = True
         bpy.context.scene.cycles.blur_glossy = 2.0
@@ -79,6 +82,18 @@ class DatasetRenderer:
 
         #load materials
         self.load_materials()
+        self.create_directory_tree()
+
+    def create_directory_tree(self):
+        os.makedirs(self.args.output_dir, exist_ok=True)
+        os.makedirs(os.path.join(self.args.output_dir, self.args.split), exist_ok=True)
+        os.makedirs(os.path.join(self.args.output_dir, self.args.split, "images"), exist_ok=True)
+
+    def save_annotations(self):
+        prefix = self.args.filename_prefix
+        filename = f"{prefix + '_' if prefix is not None else ''}{self.args.split}_annotations.json"
+        with open(os.path.join(self.args.output_dir, self.args.split, filename), "w") as f:
+            json.dump(self.annotations, f)
 
     def render(self):
         args = self.args
@@ -106,8 +121,10 @@ class DatasetRenderer:
 
         # --------------------------- RENDERING LOOP ---------------------------
 
+
         for img_index in tqdm(range(args.num_images)):
-            img_filename = f"{args.filename_prefix}{img_index:010d}.{args.image_format}"
+            prefix = args.filename_prefix
+            img_filename = f"{prefix + '_' if prefix is not None else ''}{img_index:010d}.png" #TODO: add support for other file formats
             image_info = {
                 "id" : img_index,
                 "file_name" : img_filename,
@@ -127,6 +144,22 @@ class DatasetRenderer:
             self.annotations["scenes"].append(scene)
 
             self.place_shapes()
+
+            render_args = bpy.context.scene.render
+            render_args.filepath = os.path.abspath(
+                os.path.join(args.output_dir, args.split, "images", img_filename)
+            )
+
+            while not args.test_mode:
+                try:
+                    bpy.ops.render.render(write_still=True)
+                    break
+                except Exception as e:
+                    print(e)
+
+            self.clear_scene()
+
+        self.save_annotations()
 
     def create_info(self):
         return {
@@ -179,6 +212,16 @@ class DatasetRenderer:
             light_object.location = tuple(pos[-1])
 
         return pos
+    
+    def clear_scene(self):
+        #removes all placed shapes and lights
+        for obj in context.scene.objects:
+            if obj.name.startswith("OBJECT_") or obj.type == "LIGHT":
+                obj.select_set(True)
+            else:
+                obj.select_set(False)
+
+        bpy.ops.object.delete()
 
     def load_materials(self):
         for mat_rule in self.rules["materials"]:
@@ -352,7 +395,7 @@ class DatasetRenderer:
         bpy.ops.wm.append(filename=filename)
 
         blender_obj = bpy.data.objects[name]
-        blender_obj.name = f"{name}_{object_annotation['id']}"
+        blender_obj.name = f"OBJECT_{name}_{object_annotation['id']}"
 
         return blender_obj
     

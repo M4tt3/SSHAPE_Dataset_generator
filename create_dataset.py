@@ -3,23 +3,23 @@ Copyright 2024-present, Matteo Bicchi
 All rights reserved
 
 
-This file is part of SSHAPE_Dataset.
+This file is part of SSHAPE_Dataset_generator.
 
-SSHAPE_Dataset is free software: you can redistribute it and/or modify it under the terms of the 
+SSHAPE_Dataset_generator is free software: you can redistribute it and/or modify it under the terms of the 
 GNU General Public License as published by the Free Software Foundation, either version 3 of the 
 License, or any later version.
 
-SSHAPE_Dataset is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without 
+SSHAPE_Dataset_generator is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without 
 even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General 
 Public License for more details.
 
-You should have received a copy of the GNU General Public License along with SSHAPE_Dataset. 
+You should have received a copy of the GNU General Public License along with SSHAPE_Dataset_generator. 
 If not, see <https://www.gnu.org/licenses/>.
 """
 
 import json
-from SSHAPE_Dataset.utils import *
-from SSHAPE_Dataset.render import DatasetRenderer
+from SSHAPE_Dataset_generator.utils import *
+from SSHAPE_Dataset_generator.render import DatasetRenderer
 import bpy, bpy_extras  #type:ignore
 from bpy import context #type:ignore
 import os, pathlib
