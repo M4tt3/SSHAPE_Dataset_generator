@@ -48,15 +48,13 @@ def setup_argparser():
     #                help="Whether or not to create bounding boxes ground truth data (1 for yes, 0 for no).")
     # --------------- INPUT OPTIONS ---------------
     ap.add_argument("--materials_dir", default="./materials",
-                    help="Directory in which materials are stored (in .blend format), every time an object " + 
-                         "is added to the scene one random material in this folder will be chosen.")
-    ap.add_argument("--shapes_dir" , default="./shapes",
-                    help="Directory in which shapes are stored (in .blend format), every time an object " + 
-                         "is added to the scene its shape will be randomly chosen from this folder.")
+                    help="Directory in which materials are stored (in .blend format)")
+    ap.add_argument("--objects_dir" , default="./objects",
+                    help="Directory in which objects are stored (in .blend format).")
     ap.add_argument("--rules", default="./rules.json",
                     help="Rules path, see docs on how to set them.")
-    ap.add_argument("--decoys_dir", default=None,
-                    help="Directory for decoys to be added in scenes, if left None decoys won't be added.")
+    ap.add_argument("--decoys_dir", default="./decoys",
+                    help="Directory in which decoys are stored (in .blend format).")
     ap.add_argument("--base_scene", default=None,
                     help="Base blender scene, objects coordinates are relative to its origin, the working" + 
                     "area is centerd on the origin on x and y starts on z=0.")

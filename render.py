@@ -17,7 +17,11 @@ You should have received a copy of the GNU General Public License along with SSH
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from tqdm import tqdm
+try: #tqdm is not built in, if not installed it will be skipped
+    from tqdm import tqdm 
+except ImportError:
+    tqdm = lambda k: k
+
 from datetime import datetime
 from math import sin, cos, radians, degrees, sqrt
 import random, os, json
@@ -292,7 +296,7 @@ class DatasetRenderer:
             }
 
             #add object to scene
-            obj_blender = self.add_shape(self.args.shapes_dir, object_annotations)
+            obj_blender = self.add_shape(self.args.objects_dir, object_annotations)
             #perform random scale if needed
             if shape_rule["scaling"] != "none":
                 random_scale = self.random_scale(obj_blender, shape_rule)

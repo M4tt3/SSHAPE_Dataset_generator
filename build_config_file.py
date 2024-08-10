@@ -26,7 +26,7 @@ otherwise default values will be used.
 
 """
 
-from SSHAPE_Dataset_generator.utils import setup_argparser
+from SSHAPE_Dataset_generator.utils import setup_argparser, extract_args
 import sys, json
 from pprint import pprint
 
@@ -34,22 +34,24 @@ from pprint import pprint
 if __name__ == "__main__":
     argparser = setup_argparser()
     output_file = None
+    
+    argv = extract_args()
 
     try:
-        output_file = sys.argv[1]
+        output_file = argv[0]
     except IndexError:
         pass
     finally:
         if output_file == None or output_file.startswith("-"):
             raise Exception("You must specify an output file")
-        
-    argv = sys.argv[2:]
 
-    args = argparser.parse_args(argv)
+        
+
+    args = argparser.parse_args(argv[1:])
 
     with open(output_file, "w") as f:
         pprint(args.__dict__)
         print(f"Writing this configuration to {output_file}")
-        json.dump(args.__dict__, f)
+        json.dump(args.__dict__, f, indent=4)
     
 

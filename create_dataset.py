@@ -17,12 +17,11 @@ You should have received a copy of the GNU General Public License along with SSH
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import json
 from SSHAPE_Dataset_generator.utils import *
 from SSHAPE_Dataset_generator.render import DatasetRenderer
 import bpy, bpy_extras  #type:ignore
 from bpy import context #type:ignore
-import os, pathlib
+import os, pathlib, json
 
 PATH = pathlib.Path(__file__).parent.resolve()
 os.chdir(PATH)
@@ -34,6 +33,8 @@ if __name__ == "__main__":
     argv = extract_args()
     args = parser.parse_args(argv)
     rules, defaults = {}, {}
+
+    assert args.rules is not None, "'rules' argument is not optional"
 
     if args.config is not None:
         #override default values of parser with arguments from configuration file

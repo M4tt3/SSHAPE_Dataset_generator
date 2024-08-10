@@ -1,4 +1,4 @@
-# How to setup rules files
+# Rules files
 
 They are used to specify rules on how object must be placed and rendered, for example you could set what materials can be used for certain shapes, they are stored as **json files**. Every dataset needs some basic rules to define colors, identifiers and materials but lots of different rules can be applied to make the dataset more diverse and robust.
 
@@ -14,8 +14,10 @@ Constraints file are divided in 5 sections:
 
 ## Shape attributes (objects and decoys):
 - **`id` [int]** (required and unique): An integer which uniquely identifies the shape.
-- **`name` [str]** (*default*: matches **`file`**, unique): A name for the shape, can act as a category for tasks such as detection or classification. If unset the filename without the extension will be used.
-- **`file` [str]** (required): Filename of the mesh.
+- **`name` [str]** (*default*: matches **`file`**, unique): This value must match the name of the object to be loaded from the scene of the shape file.  
+<u>NOTE</u>: Although if this value is unset, the **`file`** value without the extension will be used, it's still good practice to explicitly define it since it could lead to hard to debug errors.
+
+- **`file` [str]** (required): Filename of the shape (not the path, the file will be searched inside of either `objects_dir` or `decoys_dir`).
 - **`allowed_colors` ["all", "none" or [\<str>]]** (*default*: "all"): Colors which can be applied to the shape.   
 <ins>NOTE</ins>: This attribute can be specified both for shapes and materials, when a shape is created a color present in both is chosen, if both are not *"none"* and there are no common colors, an error is raised. For example if a shape allows for *"green"*, *"red"*, *"gray"* and *"yellow"*, and the chosen material allows for *"red"*, *"yellow"* and *"white"*, the shape will be either *"yellow"* or *"red"*.
 
