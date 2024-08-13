@@ -33,7 +33,7 @@ Constraints file are divided in 5 sections:
 - **`flip` ["none" or dict]** (*default*: "none"): If "none" the shape will remain the same, if a dict is specified, it should have 3 attributes: **`xy`**, **`xz`**, **`yz`**, each one of them can either be:
     - **true**: to flip the shape along that plane.
     - **false**: to not flip it.
-    - **random**: to have it randomly flip along that plane.
+    - **"random"**: to have it randomly flip along that plane.
 
 ## Materials attributes
 - **`id` [int]** (required and unique): An integer which uniquely identifies the material.

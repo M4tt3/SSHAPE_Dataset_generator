@@ -28,6 +28,7 @@ import random, os, json
 from random import randint
 from SSHAPE_Dataset_generator.errors import *
 from SSHAPE_Dataset_generator.utils import *
+from icecream import ic
 
 #blender
 import bpy, bpy_extras, mathutils #type: ignore
@@ -89,6 +90,7 @@ class DatasetRenderer:
         self.create_directory_tree()
 
     def create_directory_tree(self):
+        #setup output directory tree
         os.makedirs(self.args.output_dir, exist_ok=True)
         os.makedirs(os.path.join(self.args.output_dir, self.args.split), exist_ok=True)
         os.makedirs(os.path.join(self.args.output_dir, self.args.split, "images"), exist_ok=True)
@@ -100,6 +102,7 @@ class DatasetRenderer:
             json.dump(self.annotations, f)
 
     def render(self):
+        #tarts rendering
         args = self.args
         rules = self.rules
 
@@ -127,8 +130,10 @@ class DatasetRenderer:
 
 
         for img_index in tqdm(range(args.num_images)):
-            prefix = args.filename_prefix
+            prefix = args.filename_prefix #prefix for files
             img_filename = f"{prefix + '_' if prefix is not None else ''}{img_index:010d}.png" #TODO: add support for other file formats
+
+            #image metadata
             image_info = {
                 "id" : img_index,
                 "file_name" : img_filename,
@@ -138,6 +143,7 @@ class DatasetRenderer:
                 "license" : -1
             }
 
+            #scene metadata
             scene = {
                 "camera_position" : self.get_camera_position(),
                 "lights" : self.get_lights_positions(),
@@ -146,29 +152,31 @@ class DatasetRenderer:
             }
 
             self.annotations["scenes"].append(scene)
+            self.annotations["images"].append(image_info)
 
-            self.place_shapes()
+            self.populate_scene()
 
             render_args = bpy.context.scene.render
             render_args.filepath = os.path.abspath(
                 os.path.join(args.output_dir, args.split, "images", img_filename)
             )
 
-            while not args.test_mode:
-                try:
-                    bpy.ops.render.render(write_still=True)
-                    break
-                except Exception as e:
-                    print(e)
+            if not args.test_mode:
+                while True:
+                    try:
+                        bpy.ops.render.render(write_still=True)
+                        break
+                    except Exception as e:
+                        print(e)
 
-            self.clear_scene()
+                self.clear_scene()
 
         self.save_annotations()
 
     def create_info(self):
         return {
             "description" : "SSHAPE Dataset, a fully synthetic dataset for computer vision",
-            "url" : "", #TODO
+            "url" : "https://github.com/M4tt3/SSHAPE_Dataset_generator", 
             "version" : "pre-release",
             "contibutor" : "Matteo Bicchi",
             "date_created" : datetime.now().isoformat().split("T")[0]
@@ -177,7 +185,11 @@ class DatasetRenderer:
     def get_licenses(self):
         return []   #TODO
 
-    def get_camera_position(self):
+    def get_camera_position(self) -> mathutils.Vector:
+        # Generate random pitch and yaw values for the camera, move the camera
+        # to that position at a fixed distance from the origin, point the camera
+        # towards the origin and returns camera x, y, z position
+
         pitch = randint(self.args.min_camera_pitch, self.args.max_camera_pitch)
         yaw = randint(self.args.min_camera_yaw, self.args.max_camera_yaw)
 
@@ -188,7 +200,7 @@ class DatasetRenderer:
         ]
 
         #move camera into position and focus it on the origin
-        self.camera_obj.location = tuple(pos)
+        self.camera_obj.location = pos
 
         rot_quat = self.camera_obj.location.to_track_quat('Z', 'Y')
         self.camera_obj.rotation_euler = rot_quat.to_euler()
@@ -197,8 +209,13 @@ class DatasetRenderer:
         return pos
 
     def get_lights_positions(self):
+        # Chooses a random number of lights, moves them at a random position at
+        # a fixed distance from the origin, and returns an array of their x, y, z
+        # positions
+
         lights_number = randint(self.args.min_num_lights, self.args.max_num_lights)
         pos = []
+
         for i in range(lights_number):
             pos.append([
                 self.args.lights_distance * sin(radians(randint(0, 360))) * self.args.lights_jitter,
@@ -213,7 +230,7 @@ class DatasetRenderer:
             light_object = bpy.data.objects.new(name=f"Light_{i}", object_data=light_data)
             bpy.context.collection.objects.link(light_object)
 
-            light_object.location = tuple(pos[-1])
+            light_object.location = pos[-1]
 
         return pos
     
@@ -228,6 +245,7 @@ class DatasetRenderer:
         bpy.ops.object.delete()
 
     def load_materials(self):
+        # Loads all the combinations of materials and colors
         for mat_rule in self.rules["materials"]:
             #load material file
             filename = os.path.join(self.args.materials_dir, mat_rule["file"], "NodeTree", mat_rule["name"])
@@ -237,16 +255,15 @@ class DatasetRenderer:
             allowed_colors = []
             if mat_rule["allowed_colors"] == "all":
                 allowed_colors = self.rules["colors"]
-            elif mat_rule["allowed_color"] == "none":
-                pass #TODO: add support for materials with no colors applied
             elif type(mat_rule["allowed_colors"]) == list:
                 allowed_colors = [self.get_rule("colors", name=col) for col in mat_rule["allowed_colors"]]
+            elif mat_rule["allowed_colors"] == "none":
+                allowed_colors = ["none"]
 
             for color_rule in allowed_colors:
                 #add new material to the scene
                 bpy.ops.material.new()
-                mat = mat = bpy.data.materials['Material']
-                mat.name = f"{mat_rule['name']}_{color_rule['name']}"
+                mat = bpy.data.materials['Material']
                 
                 output_node = mat.node_tree.nodes["Material Output"]
 
@@ -255,8 +272,11 @@ class DatasetRenderer:
                 #copy the material node tree into the new group
                 group_node.node_tree = bpy.data.node_groups[mat_rule["name"]]
 
-
-                group_node.inputs["Color"].default_value = [*color_from_hex(color_rule["hex"]), color_rule["opacity"]]
+                if color_rule != "none":
+                    group_node.inputs["Color"].default_value = [*color_from_hex(color_rule["hex"]), color_rule["opacity"]]
+                    mat.name = f"{mat_rule['name']}_{color_rule['name']}"
+                else:
+                    mat.name = f"{mat_rule['name']}"
 
                 mat.node_tree.links.new(
                     group_node.outputs["Shader"],
@@ -264,14 +284,27 @@ class DatasetRenderer:
                 )
 
 
-    def place_shapes(self):
-        num_objects = randint(self.args.min_num_objects, self.args.max_num_objects) #random amount of objects and decoys
+    def populate_scene(self):
+        #Places a random number of objects and decoys in random places, adds their position to annotations
 
+        num_objects = randint(self.args.min_num_objects, self.args.max_num_objects) #random amount of objects
         obj_index = self.state["shape_index"]
+        self.place_shapes(obj_index, num_objects, decoys=False)
+        self.state["shape_index"] += num_objects
 
-        for obj_index in range(obj_index, num_objects + obj_index):
+        if len(self.rules["decoys"]) > 0: 
+            num_decoys = randint(self.args.min_num_decoys, self.args.max_num_decoys)
+            decoy_index = self.state["shape_index"]
+            self.place_shapes(decoy_index, num_decoys, decoys=True)
+            self.state["shape_index"] += num_decoys
 
-            shape_rule = random.choice(self.rules["objects"]) #random shape
+    def place_shapes(self, start_index: int, num_shapes: int, decoys: bool):
+        # Places a random number of shapes in random places and applies random scale,
+        # rotation, flip, material and color
+
+        group = "decoys" if decoys else "objects" #either 'decoys' or 'object' depending on what shapes are being added
+        for obj_index in range(start_index, start_index + num_shapes):
+            shape_rule = random.choice(self.rules[group]) #random shape
             
             material, color = self.choose_random_appearance(shape_rule)
 
@@ -287,51 +320,61 @@ class DatasetRenderer:
                     "id" : material["id"],
                     "name" : material["name"],
                     "file" : material["file"]
-                },
+                } if material is not None else None,
                 "color" : {
                     "id" : color["id"],
                     "name" : color["name"],
                     "hex" : color["hex"]
-                },
+                } if color is not None else None,
             }
 
             #add object to scene
-            obj_blender = self.add_shape(self.args.objects_dir, object_annotations)
+            obj_blender = self.add_shape(self.args.decoys_dir if decoys else self.args.objects_dir, object_annotations)
+
             #perform random scale if needed
             if shape_rule["scaling"] != "none":
                 random_scale = self.random_scale(obj_blender, shape_rule)
+
             #apply fixed rotation and random rotation if needed
             rotate(obj_blender, shape_rule["fixed_rotation"])
             random_rotation = [0, 0, 0]
             if shape_rule["random_rotation"] != "none":
                 random_rotation = self.random_rotate(obj_blender, shape_rule)
 
-            object_annotations["scale"] = random_scale #apply random scaling to scene annotations
+            #apply random flips
+            if shape_rule["flip"] != "none":
+                self.random_flip(shape_rule["flip"])
+
+            object_annotations["scale"] = random_scale
             object_annotations["rotation"] = [random_rotation[i] + shape_rule["fixed_rotation"][i] for i in range(3)] #sum random and fixed rotation
 
             bpy.context.view_layer.objects.active = obj_blender
             bpy.ops.object.transform_apply(rotation=True, scale=True)
 
+            #position the shape randomly
             pos = self.try_shape_placement(obj_blender, shape_rule, object_annotations)
-            object_annotations["position"] = pos
+            if pos is not None:
+                object_annotations["position"] = pos
 
-            material_blender = bpy.data.materials[f"{material['name']}_{color['name']}"]
-            obj_blender.data.materials.append(material_blender)
 
-            self.annotations["scenes"][-1]["objects"].append(object_annotations)
-
+            if material is not None:
+                if color is None:
+                    material_blender = bpy.data.materials[f"{material['name']}"]
+                else:
+                    material_blender = bpy.data.materials[f"{material['name']}_{color['name']}"]
             
-            
+                obj_blender.data.materials.append(material_blender)
 
-        self.state["shape_index"] += num_objects
+            self.annotations["scenes"][-1][group].append(object_annotations)
 
     def choose_random_appearance(self, shape):
         #returns random material and color rules
 
         material = None 
+        ic(shape["allowed_materials"])
         if shape["allowed_materials"] == "all":
             material = random.choice(self.rules["materials"])
-        if type(shape["allowed_materials"]) == list and len(shape["allowed_materials"]) > 0:
+        elif type(shape["allowed_materials"]) == list and len(shape["allowed_materials"]) > 0:
             mat_name = random.choice(shape["allowed_materials"])
             material = self.get_material(mat_name)
             if material is None:
@@ -428,37 +471,64 @@ class DatasetRenderer:
         obj.scale = scaling_factors
         return scaling_factors
 
-    def random_rotate(self, obj, shape):
+    def random_rotate(self, obj, shape_rule):
         rotation = [0, 0, 0]
-        #TODO: Make this function better, add support for a change of AUTO_ROTATION_VECT, add caching possibility and the option to limit auto snap range
-        if shape["random_rotation"]["auto_snap_face"]:
+        get_random_angle = lambda axis: random.randrange(
+            start=shape_rule["random_rotation"]["min_bounds"][axis],
+            stop=shape_rule["random_rotation"]["max_bounds"][axis],
+            step=shape_rule["random_rotation"]["snap"][axis],
+        )
+        #TODO: Make this function better, add support for a change of AUTO_ROTATION_VECT and caching possibility
+        if shape_rule["random_rotation"]["auto_snap_face"]:
             #Auto rotate so that the normal of a random face is aligned to AUTO_ROTATION_VECT
-            normal = random.choice(obj.data.polygons).normal
-            angle = normal.angle(AUTO_ROTATION_VECT)
-            axis = normal.cross(AUTO_ROTATION_VECT)
-            matrix = mathutils.Matrix.Rotation(angle, 3, axis)
-            rotation_radians = matrix.to_euler()
-            rotation = [degrees(k) for k in rotation_radians]
-        else:
-            get_random_angle = lambda axis: random.randrange(
-                start=shape["random_rotation"]["min_bounds"][axis],
-                stop=shape["random_rotation"]["max_bounds"][axis],
-                step=shape["random_rotation"]["snap"][axis],
-            )
+            for attempt in range(16):
+                normal = random.choice(obj.data.polygons).normal #normal of a random face
+                angle = normal.angle(AUTO_ROTATION_VECT) #angle between normal and AUTO_ROTATION_VECT
+                axis = normal.cross(AUTO_ROTATION_VECT) #axis perpendicular to normal and AUTO_ROTATION_VECT
+                matrix = mathutils.Matrix.Rotation(angle, 3, axis)
+                rotation_radians = matrix.to_euler()
+                valid = True
+                for axis in range(3):
+                    if (degrees(rotation_radians[axis]) <= shape_rule["random_rotation"]["max_bounds"][axis]
+                    and degrees(rotation_radians[axis]) >= shape_rule["random_rotation"]["min_bounds"][axis]):
+                        rotation[axis] = degrees(rotation_radians[axis])
+                    else:
+                        valid=False
+                        break
+                if valid:
+                    break
+            
+            #Add z rotation if needed
+            if shape_rule["random_rotation"]["snap"][2] != 0:
+                rotation[2] = get_random_angle(2)
 
+        else:
             for axis in range(3):
-                angle = get_random_angle(axis) if shape["random_rotation"]["snap"][axis] > 0 else 0
+                angle = get_random_angle(axis) if shape_rule["random_rotation"]["snap"][axis] > 0 else 0
                 rotation[axis] = angle
 
         rotate(obj, rotation)
         return rotation
+    
+    def random_flip(self, flip_rule):
+        #mirrors currently active object based on the flip settings it receives
+        flips = (False, False, False)
+        for flip_axis, flip_mode in flip_rule.items():
+            if flip_mode == "random":
+                flip_mode = bool(random.getrandbits(1)) #random bool
             
+            idx = ["yz", "xz", "xy"].index(flip_axis)
+            flips[idx] = flip_mode
+
+        bpy.ops.transform.mirror(constraint_axis=flips)
+        
+
+
 
     def try_shape_placement(self, obj, shape_rule, obj_annotations, max_attempts=50):
         for attempt in range(max_attempts):
             get_random_pos = lambda: random.uniform(self.args.padding - self.args.area_size / 2, self.args.area_size / 2 - self.args.padding)
-            pos = [get_random_pos() for i in range(3)] #this is the centroid position
-            origin = mathutils.Vector((0, 0, 0))
+            pos = [get_random_pos() for i in range(3)]
             if shape_rule["snap_to_plane"] == True:
                 origin = mathutils.Vector((0,0,0))
                 dir = mathutils.Vector((0,0,-1))
@@ -468,13 +538,16 @@ class DatasetRenderer:
             if self.check_min_distance(pos, obj_annotations):
                 obj.location = pos
                 return pos
-            
+        
+        print(f"Unable to place shape {obj_annotations['id']} after {max_attempts} attempts, the shape will" + 
+              "be removed.\nThis warning is probably a result of too many shapes, too high 'min_distance' or a too" +
+              "low area size.\nIf this error pops up more than once you should probably modify those values.")
         return None
     
     def check_min_distance(self, pos, obj_annotations):
-        #returns true if the object respects the 'min_distance' rule from all the other object of the last scene
-        for other_object in self.annotations["scenes"][-1]["objects"]:
-            distance = get_distance(Vector(other_object["position"]), Vector(pos)) #distance between two objects
+        #returns true if the object respects the 'min_distance' rule from all the other shapes of the last scene
+        for other_object in self.annotations["scenes"][-1]["objects"] + self.annotations["scenes"][-1]["decoys"]:
+            distance = get_distance(Vector(other_object["position"]), Vector(pos)) #distance between two shapes
 
             #minimum distances scaled to the max scaling along an axis of each object
             min_distance_1 = other_object["shape"]["min_distance"] * max(*other_object["scale"])
