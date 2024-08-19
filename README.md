@@ -1,3 +1,10 @@
+# Contribution
+
+This is an **ongoing project**, every contribution is welcome, feel free to send a **pull request** for any changes or to give me some **advice**.
+
+If you like the project **sharing** it could be really helpful.
+
+
 # Quickstart guide
 
 <ol>
