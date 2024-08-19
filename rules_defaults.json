@@ -1,5 +1,5 @@
 {
-    "shape": {
+    "objects": {
         "id" : "REQUIRED;UNIQUE",
         "file" : "REQUIRED",
         "name" : "=lambda shape: '.'.join(shape['file'].split('.')[:-1]);UNIQUE",
@@ -12,14 +12,27 @@
         "flip" : "none",
         "snap_to_plane" : "none"
     },
-    "material" : {
+    "decoys": {
+        "id" : "REQUIRED;UNIQUE",
+        "file" : "REQUIRED",
+        "name" : "=lambda shape: '.'.join(shape['file'].split('.')[:-1]);UNIQUE",
+        "allowed_colors" : "all",
+        "allowed_materials" : "all",
+        "margin" : 0,
+        "scaling" : "none",
+        "random_rotation" : "none",
+        "fixed_rotation" : [0, 0, 0],
+        "flip" : "none",
+        "snap_to_plane" : "none"
+    },
+    "materials" : {
         "id" : "REQUIRED",
         "file" : "REQUIRED",
         "allowed_colors" : "all",
         "degradation" : "none",
         "emission" : "none"
     },
-    "color" : {
+    "colors" : {
         "name" : "REQUIRED;UNIQUE",
         "id" : "REQUIRED",
         "hex" : "REQUIRED",

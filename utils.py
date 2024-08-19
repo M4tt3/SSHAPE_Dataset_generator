@@ -42,10 +42,12 @@ def setup_argparser():
                     help="Whether or not to use gpu fo rendering (1 for yes, 0 for no).")
     #ap.add_argument("--image_format", default="jpg",
     #                help="Saving format for images, must be supported bu OpenCV")
-    #ap.add_argument("--create_segmentations", default=1, type=int,
-    #                help="Whether or not to create segmentation ground truth data (1 for yes, 0 for no).")
-    #ap.add_argument("--create_bounding_boxes", default=1, type=int,
-    #                help="Whether or not to create bounding boxes ground truth data (1 for yes, 0 for no).")
+    ap.add_argument("--create_segmentations", default=1, type=int,
+                    help="Whether or not to create segmentation ground truth data (1 for yes, 0 for no).")
+    ap.add_argument("--create_depth", default=1, type=int,
+                    help="Whether or not to create depth ground truth data (1 for yes, 0 for no).")
+    ap.add_argument("--create_bounding_boxes", default=1, type=int,
+                    help="Whether or not to create bounding boxes ground truth data (1 for yes, 0 for no).")
     # --------------- INPUT OPTIONS ---------------
     ap.add_argument("--materials_dir", default="./materials",
                     help="Directory in which materials are stored (in .blend format)")
@@ -146,6 +148,7 @@ def check_rule(rule, defaults, rule_name, macros):
             #Check for required values
             if type(default_value) == str and default_value.split(";")[0] == "REQUIRED" and value is None:
                 raise RequiredAttributeNotFoundError(attribute, rule_name)
+            
             #Add dynamic default values
             elif type(default_value) == str and default_value.startswith("=") and value is None:
                 str_func = default_value[1:]
@@ -153,6 +156,7 @@ def check_rule(rule, defaults, rule_name, macros):
                     str_func = str_func.split(";")[0]
                 func = eval(str_func)
                 element[attribute] = func(element)
+
             #Add static default values
             elif value is None:
                 element[attribute] = default_value
@@ -163,7 +167,7 @@ def check_rule(rule, defaults, rule_name, macros):
             try:
                 if default_value.split(";")[1] == "UNIQUE":
                     element_uniques[attribute] = element[attribute]
-            except IndexError: pass #In case of no ';' which would trigger an index out of bounds exception
+            except IndexError: pass #In case of no ';', which would trigger an index out of bounds exception
             except AttributeError: pass #In case of the value not being a string
 
         #Check if unique values used are duplicate

@@ -19,6 +19,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 from SSHAPE_Dataset_generator.utils import *
 from SSHAPE_Dataset_generator.render import DatasetRenderer
+from SSHAPE_Dataset_generator.rules_utils import Rules
 import bpy, bpy_extras  #type:ignore
 from bpy import context #type:ignore
 import os, pathlib, json
@@ -32,7 +33,6 @@ parser = setup_argparser()
 if __name__ == "__main__":
     argv = extract_args()
     args = parser.parse_args(argv)
-    rules, defaults = {}, {}
 
     assert args.rules is not None, "'rules' argument is not optional"
 
@@ -42,13 +42,7 @@ if __name__ == "__main__":
             parser.set_defaults(**json.load(f))
             args = parser.parse_args(argv)
 
-    with open(args.rules, "r") as f:
-        rules = json.load(f)
-    with open("rules_defaults.json", "r") as f:
-        defaults = json.load(f)
-
-    #Sets to default unset values, checks for required and unique values and substitutes macros
-    complete_rules(rules, defaults)
+    rules = Rules(args.rules)
 
     if args.test_mode == 1:
         args.num_images = 1 #in testing mode only one image will be shown

@@ -1,11 +1,11 @@
 # Quickstart guide
 
 <ol>
-<h2><li> Installation</h2>
+<h2><li> Install</h2>
 
 ### Prerequsites
-To run this script you must have [Blender](https://www.blender.org/) installed on your system.
-Testing was done on Blender 2.91 and 4.2 so any version >=2.91 should be good.
+To run this script you must have [Blender](https://www.blender.org/) installed on your system.  
+The script will work on blender version >=3.0 and <=3.6, but version 3.6 is advised, in case of compatibility issues on theese versions please post an issue.
 
 ### Navigate to the packages directory of embedded python
 
@@ -13,33 +13,48 @@ Run the following script in a terminal.
 
     cd {BLENDER}/{BLENDER VERSION}/python/lib
 
-Replace **{BLENDER}** in with your blender installation directory, and **{BLENDER VERSION}** with your blender version which you can get by running `blender --version`.
+Replace **{BLENDER}** in with your blender installation directory, and **{BLENDER VERSION}** with your blender version, which you can get by running `blender --version`.
 
 ### Clone the github repo
 Dowload SSHAPE_Dataset_generator by running the following command.
 
     git clone https://github.com/M4tt3/SSHAPE_Dataset_generator.git
 
-<h2><li> (OPTIONAL) Install pip and tqdm</h2>
+<h2><li> Install bpycv </h2>
+[bpycv](https://github.com/DIYer22/bpycv) is a library used to generate instance annotations (segmentation, depth, ...), it is required to run this script.  
 
-[pip](https://pypi.org/project/pip/), is needed to install tqdm and most of python libraries and packages.   
+To install run an elevated terminal, navigate to the blender installation dir and run the following commands:
+
+### Install pip (or update if installed)
+
+    blender -b --python-expr "from subprocess import sys,call;call([sys.executable,'-m','ensurepip'])"
+
+### Update pip toolchain
+
+    blender -b --python-expr "from subprocess import sys,call;call([sys.executable]+'-m pip install -U pip setuptools wheel'.split())"
+
+### Install bpycv with pip
+
+    blender -b --python-expr "from subprocess import sys,call;call([sys.executable]+'-m pip install -U bpycv'.split())"
+
+
+### Check installation
+Once the installation is done you can check that bpycv was correctly installed by running:
+
+    blender -b -E CYCLES --python-expr "import bpycv,cv2;d=bpycv.render_data();bpycv.tree(d);cv2.imwrite('/tmp/try_bpycv_vis(inst-rgb-depth).jpg', d.vis()[...,::-1])"
+
+
+
+<h2><li> (OPTIONAL) Install tqdm</h2>
+
 [tqdm](https://tqdm.github.io/) is a python library used to show a progress bar during rendering.  
 Not installing tqdm will have no effect on performance but it can be handy to get information about progress during rendering.
 
-### Install pip
-To install pip dowload the `get-pip.py` script:
-
-    wget https://bootstrap.pypa.io/get-pip.py
-
-Then run the script with the embedded python:
-
-    {BLENDER}/{BLENDER VERSION}/python/bin/python get-pip.py
-
-
-### Install tqdm
-Now run the following to install tqdm
+Run the following to install tqdm
 
     {BLENDER}/{BLENDER VERSION}/python/bin/python -m pip install tqdm
+
+Replace **{BLENDER}** in with your blender installation directory, and **{BLENDER VERSION}** with your blender version, which you can get by running `blender --version`.
 
 <h2><li> Setup rules </h2>
 
