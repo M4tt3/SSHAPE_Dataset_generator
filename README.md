@@ -28,6 +28,7 @@ Dowload SSHAPE_Dataset_generator by running the following command.
     git clone https://github.com/M4tt3/SSHAPE_Dataset_generator.git
 
 <h2><li> Install bpycv </h2>
+
 [bpycv](https://github.com/DIYer22/bpycv) is a library used to generate instance annotations (segmentation, depth, ...), it is required to run this script.  
 
 To install run an elevated terminal, navigate to the blender installation dir and run the following commands:
