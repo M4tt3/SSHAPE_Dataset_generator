@@ -25,11 +25,9 @@ from typing import TypeAlias
 Identifier: TypeAlias = int | str
 
 class Rules:
-    def __init__(self, path):
-        rules, defaults = {}, {}
+    def __init__(self, rules):
+        defaults = {}
 
-        with open(path, "r") as f:
-            rules = json.load(f)
         with open("./rules_defaults.json", "r") as f:
             defaults = json.load(f)
 
@@ -38,6 +36,15 @@ class Rules:
         self.colors = RulesSection(rules, "colors", defaults)
         self.materials = RulesSection(rules, "materials", defaults)
         self.categories = rules["categories"]
+
+    def get_dict(self):
+        return {
+            "objects" : list(self.objects),
+            "decoys" : list(self.decoys),
+            "colors" : list(self.colors),
+            "materials" : list(self.materials),
+            "categories" : list(self.categories)
+        }
 
     def __getitem__(self, id: str):
         return self.__getattribute__(id)

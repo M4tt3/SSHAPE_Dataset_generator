@@ -60,8 +60,8 @@ def setup_argparser():
     ap.add_argument("--base_scene", default=None,
                     help="Base blender scene, objects coordinates are relative to its origin, the working" + 
                     "area is centerd on the origin on x and y starts on z=0.")
-    #ap.add_argument("--resume", default=None,
-    #                help="Path of the checkpoint file to resume a paused rendering.")
+    ap.add_argument("--resume", default=None,
+                    help="Path of the checkpoint file to resume a paused rendering.")
     ap.add_argument("--config", default=None,
                     help="Config file (JSON) to use instead of command line arguments")
     # --------------- SETTINGS ---------------

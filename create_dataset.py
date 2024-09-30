@@ -23,6 +23,7 @@ from SSHAPE_Dataset_generator.rules_utils import Rules
 import bpy, bpy_extras  #type:ignore
 from bpy import context #type:ignore
 import os, pathlib, json
+import signal
 
 PATH = pathlib.Path(__file__).parent.resolve()
 os.chdir(PATH)
@@ -36,13 +37,25 @@ if __name__ == "__main__":
 
     assert args.rules is not None, "'rules' argument is not optional"
 
-    if args.config is not None:
+    state = None
+    rules = None
+
+    if args.resume is not None:
+        with open(args.resume, "r") as f:
+            checkpoint = json.load(f)
+            parser.set_defaults(checkpoint["args"])
+            args = parser.parse_args([])
+            rules = Rules(checkpoint["rules"])
+            state = checkpoint["state"]
+    elif args.config is not None:
         #override default values of parser with arguments from configuration file
         with open(args.config, "r") as f:
             parser.set_defaults(**json.load(f))
             args = parser.parse_args(argv)
 
-    rules = Rules(args.rules)
+    if rules is None:
+        with open(args.rules, "r") as f:
+            rules = Rules(json.load(f))
 
     if args.test_mode == 1:
         args.num_images = 1 #in testing mode only one image will be shown
@@ -51,7 +64,8 @@ if __name__ == "__main__":
         bpy.ops.wm.open_mainfile(filepath=args.base_scene)
         window = context.window_manager.windows[0]
         with context.temp_override(window=window):
-            renderer = DatasetRenderer(args, rules)
+            renderer = DatasetRenderer(args, rules, state)
+            signal.signal(signal.SIGINT, renderer.stop())
             renderer.render()
 
 

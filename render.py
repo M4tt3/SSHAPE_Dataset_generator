@@ -44,11 +44,12 @@ AUTO_ROTATION_VECT = mathutils.Vector((0, 0, -1))
 
 
 class DatasetRenderer:
-    def __init__(self, args, rules):
+    def __init__(self, args, rules, state=None):
         self.args = args
         self.rules = rules
         self.annotations = None
-        self.state = None #None if not rendering, otherwise stores rendering data and progression
+        self.state = state #Stores rendering progression
+        self.run = True
 
         #INITIALIZE SCENE
         scene = bpy.context.scene
@@ -136,7 +137,9 @@ class DatasetRenderer:
         # --------------------------- RENDERING LOOP ---------------------------
 
 
-        for img_index in tqdm(range(args.num_images)):
+        for img_index in tqdm(range(self.state["img_index"], args.num_images)):
+            self.state["img_index"] = img_index
+            if not self.run: break
             prefix = args.filename_prefix #prefix for files
             img_filename = f"{prefix + '_' if prefix is not None else ''}{img_index:010d}.png" #TODO: add support for other file formats
 
@@ -188,6 +191,26 @@ class DatasetRenderer:
             self.clear_scene()
 
         self.save_annotations()
+        if not self.run: self.save_checkpoint()
+
+    def stop(self):
+        print("Interrupting rendering process and creating a checkpoint file.")
+        self.run = False
+
+    def save_checkpoint(self):
+        checkpoint_path = os.path.join(
+            self.args.output_dir,
+            f"checkpoint_{datetime.now().isoformat().split('.')[0]}.json"
+        )
+
+        checkpoint = {
+            "state" : self.state,
+            "args" : self.args,
+            "rules" : self.rules.get_dict()
+        }
+
+        with open(checkpoint_path, "w") as f:
+            json.dump(checkpoint, f)
 
     def create_info(self):
         return {
