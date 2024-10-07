@@ -43,7 +43,7 @@ class Rules:
             "decoys" : list(self.decoys),
             "colors" : list(self.colors),
             "materials" : list(self.materials),
-            "categories" : list(self.categories)
+            "categories" : dict(self.categories)
         }
 
     def __getitem__(self, id: str):
@@ -125,7 +125,7 @@ class RulesSection:
     def __init__(self, rules, section_name, defaults):
         self.name__ = section_name
         self.section__ = rules[section_name]
-        check_rule(self.section__, defaults, section_name, rules["macros"])
+        check_rule(self.section__, defaults, section_name, rules.get("macros", {}))
         self.rules__ = rules
 
     def __getitem__(self, identifier : Identifier | None) -> dict:
@@ -192,7 +192,7 @@ class RulesSection:
         return val_list
 
 def complete_rules(rules: Rules, defaults: dict):
-    macros = rules.get("macros", None)
+    macros = rules.get("macros", {})
     rules.pop("macros")
     check_rule(rules["objects"] + rules["decoys"], defaults, "shape", macros)
     check_rule(rules["materials"], defaults, "material", macros)

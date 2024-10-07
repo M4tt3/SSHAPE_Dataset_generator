@@ -22,6 +22,8 @@ from SSHAPE_Dataset_generator.errors import *
 from math import radians
 import mathutils #type:ignore
 from mathutils import Vector, Matrix, Euler #type:ignore
+import numpy as np
+from icecream import ic
 
 def setup_argparser():
     ap = argparse.ArgumentParser()
@@ -102,7 +104,22 @@ def setup_argparser():
     ap.add_argument("--lights_intensity", default=60, type=float,
                     help="Intensity of lights.")
     ap.add_argument("--test_mode", default=0, type=int,
-                    help="Sets testing mode (1 for yes, 0 for no), see docs 'Testing mode'")
+                    help="Sets testing mode (1 for yes, 0 for no), see docs 'Testing mode'.")
+    ap.add_argument("--start_index", default=0, type=int)
+    
+    # --------------- MULTI GPU ---------------
+
+    ap.add_argument("--use_devices", default="all", nargs="+",
+                    help="Which devices to use for rendering, separate each one with a space." + 
+                    "Incompatible with --use_multiple_gpus.")
+
+    ap.add_argument("--use_multiple_gpus", default=0, type=int,
+                    help="Wether or not to divide the rendering across multiple gpus (enable "+
+                    "with 1, disable with 0.")
+
+    ap.add_argument("--gpu_groups", default=None, nargs="+",
+                    help="IDs of devices across which the rendering must be divided, see docs" +
+                    "'Multi gpu rendering' for more info.")
     
     return ap
 
@@ -119,6 +136,51 @@ def extract_args(input_argv=None):
         idx = input_argv.index('--')
         output_argv = input_argv[(idx + 1):]
     return output_argv
+
+def change_args(args, **kwargs):
+    for (arg_name, new_value) in kwargs.items():
+        arg_name = f"--{arg_name}"
+        try:
+            arg_i = args.index(arg_name)
+            if new_value is None:
+                for arg_end in range(arg_i + 1, len(args) + 1):
+                    if arg_end == len(args) or args[arg_end].startswith("--"):
+                        del args[arg_i:arg_end]
+                        break
+            else:
+                for arg_end in range(arg_i + 1, len(args) + 1):
+                    if arg_end == len(args) or args[arg_end].startswith("--"):
+                        args[arg_i + 1] = str(new_value)
+                        if arg_i + 2 < arg_end:
+                            del args[arg_i + 2:arg_end]
+                        break
+        except ValueError:
+            args += [arg_name, str(new_value)]
+
+    return args
+
+def divide_workloads(times, num_images):
+    #Divide the images in ranges inversely proportional to the time each device takes to render
+    product = np.prod(times)
+    combinations_sum = 0
+    for i in range(len(times)):
+        times_without_i = times.copy()
+        times_without_i.pop(i)
+        combinations_sum += np.prod(times_without_i)
+    
+    k = product/combinations_sum
+    ranges = []
+    lower_limit = 0
+    for time in times:
+        upper_limit = round(lower_limit + (k / time) * num_images)
+        ranges.append([
+            lower_limit,
+            upper_limit
+        ])
+        lower_limit = upper_limit + 1
+
+    ranges[-1][1] = num_images
+    return ranges
 
 def complete_rules(rules, defaults):
     macros = rules.get("macros", None)

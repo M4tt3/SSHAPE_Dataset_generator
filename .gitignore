@@ -1,5 +1,6 @@
-test.*
+test*.*
 output.json
 output/
 data/
 __pycache__/
+test/

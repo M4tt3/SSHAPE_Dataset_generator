@@ -29,6 +29,7 @@ from random import randint
 from SSHAPE_Dataset_generator.errors import *
 from SSHAPE_Dataset_generator.utils import *
 from SSHAPE_Dataset_generator.categories import create_categories_list, get_category_name
+from SSHAPE_Dataset_generator.configure_gpus import set_render_args
 from icecream import ic
 import numpy as np
 
@@ -42,14 +43,31 @@ import bpycv, cv2
 #NOTE: Right now changing this vector is not properly supported
 AUTO_ROTATION_VECT = mathutils.Vector((0, 0, -1))
 
-
 class DatasetRenderer:
-    def __init__(self, args, rules, state=None):
+    def __init__(self, args, rules, checkpoint=None):
         self.args = args
         self.rules = rules
-        self.annotations = None
-        self.state = state #Stores rendering progression
+        self.annotations = checkpoint["annotations"] if checkpoint else None 
+        self.state = checkpoint["state"] if checkpoint else None #Stores rendering progression
         self.run = True
+
+        if checkpoint:
+            self.annotations = checkpoint["annotations"]
+            self.state = checkpoint["state"]
+        else:
+            self.annotations = {
+                "info" : self.create_info(),
+                "licenses" : self.get_licenses(),
+                "images" : [],
+                "annotations" : [],
+                "scenes" : [],
+                "categories" : create_categories_list(self.rules)
+            }
+            self.state = {
+                "img_index" : self.args.start_index,
+                "shape_index" : 0
+            }
+
 
         #INITIALIZE SCENE
         scene = bpy.context.scene
@@ -64,8 +82,9 @@ class DatasetRenderer:
 
         scene.collection.objects.link(self.camera_obj)
         scene.camera = self.camera_obj
-
+        
         render_args = bpy.context.scene.render
+        """
         render_args.engine = "CYCLES"
         render_args.resolution_x = args.images_width
         render_args.resolution_y = args.images_height
@@ -82,10 +101,13 @@ class DatasetRenderer:
 
         bpy.data.worlds['World'].cycles.sample_as_light = True
         bpy.context.scene.cycles.blur_glossy = 2.0
-        bpy.context.scene.cycles.samples = 512
+        bpy.context.scene.cycles.samples = 128
         bpy.context.scene.cycles.transparent_min_bounces = 6
         bpy.context.scene.cycles.transparent_max_bounces = 8
-        
+        """
+        set_render_args(self.args.use_devices)
+        print("Rendering with devices:", self.args.use_devices)
+
         #add primitive plane  
         self.primitive_plane = bpy.ops.mesh.primitive_plane_add(size=args.area_size)
 
@@ -119,24 +141,9 @@ class DatasetRenderer:
         #tarts rendering
         args = self.args
 
-        self.annotations = {
-            "info" : self.create_info(),
-            "licenses" : self.get_licenses(),
-            "images" : [],
-            "annotations" : [],
-            "scenes" : [],
-            "categories" : create_categories_list(self.rules)
-        }
-
-        self.state = {
-            "img_index" : 0,
-            "shape_index" : 0
-        }
-
-
         # --------------------------- RENDERING LOOP ---------------------------
 
-
+        print(f"Starting from img_index: {self.state['img_index']}")
         for img_index in tqdm(range(self.state["img_index"], args.num_images)):
             self.state["img_index"] = img_index
             if not self.run: break
@@ -174,6 +181,7 @@ class DatasetRenderer:
             if not args.test_mode:
                 while True:
                     try:
+                        set_render_args(self.args.use_devices)
                         bpy.ops.render.render(write_still=True)
                         if args.create_segmentations == 1 or args.create_depth == 1:
                             gnd_truth = bpycv.render_data(render_image=False)
@@ -187,26 +195,28 @@ class DatasetRenderer:
                         break
                     except Exception as e:
                         print(e)
-
-            self.clear_scene()
+                        
+                self.clear_scene()
 
         self.save_annotations()
         if not self.run: self.save_checkpoint()
 
-    def stop(self):
+    def stop(self, sig, frm):
+        #Args are signal and frame from the signal library, not important
         print("Interrupting rendering process and creating a checkpoint file.")
         self.run = False
 
     def save_checkpoint(self):
         checkpoint_path = os.path.join(
             self.args.output_dir,
-            f"checkpoint_{datetime.now().isoformat().split('.')[0]}.json"
+            f"checkpoint_{datetime.now().isoformat().split('.')[0].replace(':','-')}.json"
         )
 
         checkpoint = {
             "state" : self.state,
-            "args" : self.args,
-            "rules" : self.rules.get_dict()
+            "args" : vars(self.args),
+            "rules" : self.rules.get_dict(),
+            "annotations" : self.annotations
         }
 
         with open(checkpoint_path, "w") as f:
