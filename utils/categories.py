@@ -17,7 +17,8 @@ You should have received a copy of the GNU General Public License along with SSH
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from SSHAPE_Dataset_generator.rules_utils import Rules
+from SSHAPE_Dataset_generator.utils.rules import Rules
+from SSHAPE_Dataset_generator.utils import *
 
 def create_categories_list(rules: Rules) -> list:
     # Creates a list of all the possible categories

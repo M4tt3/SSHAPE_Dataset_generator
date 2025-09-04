@@ -18,7 +18,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import argparse, sys, random
-from SSHAPE_Dataset_generator.errors import *
+from SSHAPE_Dataset_generator.utils.errors import *
 from math import radians
 import mathutils #type:ignore
 from mathutils import Vector, Matrix, Euler #type:ignore
@@ -107,7 +107,7 @@ def setup_argparser():
                     help="Sets testing mode (1 for yes, 0 for no), see docs 'Testing mode'.")
     ap.add_argument("--start_index", default=0, type=int)
     
-    # --------------- MULTI GPU ---------------
+    # --------------- RENDERING OPTIONS ---------------
 
     ap.add_argument("--use_devices", default="all", nargs="+",
                     help="Which devices to use for rendering, separate each one with a space." + 
@@ -120,7 +120,7 @@ def setup_argparser():
     ap.add_argument("--gpu_groups", default=None, nargs="+",
                     help="IDs of devices across which the rendering must be divided, see docs" +
                     "'Multi gpu rendering' for more info.")
-    
+
     return ap
 
 def extract_args(input_argv=None):
@@ -182,173 +182,4 @@ def divide_workloads(times, num_images):
     ranges[-1][1] = num_images
     return ranges
 
-def complete_rules(rules, defaults):
-    macros = rules.get("macros", None)
-    rules.pop("macros")
-    check_rule(rules["objects"] + rules["decoys"], defaults, "shape", macros)
-    check_rule(rules["materials"], defaults, "material", macros)
-    check_rule(rules["colors"], defaults, "color", macros)
 
-def check_rule(rule, defaults, rule_name, macros):
-    default = defaults[rule_name]
-    #list of dicts, unique values already used
-    in_use_uniques = []
-
-    for element in rule:
-        element_uniques = {} #stores unique values for this element
-        for attribute in default.keys():
-            value = element.get(attribute, None)
-            default_value = default[attribute]
-            #Substitute macros
-            if type(value) == str and value.startswith("$"):
-                macro_name = element[attribute][1:]
-                if macros is not None and macros.get(macro_name, None) is not None:
-                    element[attribute] = macros[macro_name]
-                else:
-                    raise UndefinedMacroError(macro_name)
-
-            #Check for required values
-            if type(default_value) == str and default_value.split(";")[0] == "REQUIRED" and value is None:
-                raise RequiredAttributeNotFoundError(attribute, rule_name)
-            
-            #Add dynamic default values
-            elif type(default_value) == str and default_value.startswith("=") and value is None:
-                str_func = default_value[1:]
-                if ";" in str_func:
-                    str_func = str_func.split(";")[0]
-                func = eval(str_func)
-                element[attribute] = func(element)
-
-            #Add static default values
-            elif value is None:
-                element[attribute] = default_value
-            elif type(value) == dict:
-                check_rule([element[attribute]], defaults, attribute, macros)
-
-            #If value is unique add it to 'element_uniques'
-            try:
-                if default_value.split(";")[1] == "UNIQUE":
-                    element_uniques[attribute] = element[attribute]
-            except IndexError: pass #In case of no ';', which would trigger an index out of bounds exception
-            except AttributeError: pass #In case of the value not being a string
-
-        #Check if unique values used are duplicate
-        for unique_attr in element_uniques.keys():
-            for in_use in in_use_uniques:
-                if element_uniques[unique_attr] == in_use[unique_attr]:
-                    raise DuplicateValueError(unique_attr, rule_name)
-                
-        in_use_uniques.append(element_uniques)
-
-def intersect(list1, list2):
-    return list(set(list1) & set(list2))
-
-def rotate(obj, angle):
-    #rotates blender object, rotation is absolute and expressed in degrees
-    obj.rotation_euler = (radians(angle[0]), radians(angle[1]), radians(angle[2]))
-    
-def randrange_float(min, max, step):
-    #similar to random.randrange() but works with floating point values
-    range = [min]
-    while range[-1] < max:
-        range.append(range[-1] + step)
-    
-    return random.choice(range)
-
-def get_random_scaling_factors(amount, min, max, step, max_delta=None):
-    factors = []
-    for i in range(amount):
-        factors.append(randrange_float(min, max, step))
-    
-    #check for max delta if needed
-    if max_delta is not None:
-        for fac1 in factors:
-            for fac2 in factors:
-                if abs(fac1 - fac2) > max_delta:
-                    try:
-                        return get_random_scaling_factors(amount, min, max, step, max_delta)
-                    except RecursionError:
-                        print("Ignoring 'max_delta' in random scaling due to RecursionError \n"+
-                              "This error can be caused by having a too low 'step' value and/or a too low 'max_scaling_difference', "+
-                              "if this warning pops up more than once you should probably modify those values.")
-                
-    return factors
-
-def get_distance(vect1, vect2):
-    #get distance from 2 points located by vectors
-    return (vect1 - vect2).length
-
-def check_point_intersection(point, bbox_origin, bbox_size, bbox_rotation):
-    #checks if the point lands inside the given bounding box
-    
-    rot_matrix = bbox_rotation.to_matrix()
-    #vector connecting the point to the origin of the bbox
-    #transformed to global space
-    vector_origin_point = (point - bbox_origin) @ rot_matrix
-    
-    if vector_origin_point > bbox_size.length:
-        return False
-    
-    for axis in range(3):
-        if abs(bbox_size[axis] / 2) < abs(vector_origin_point[axis]):
-            return False
-    return True
-
-def get_box_corners(origin, size, rotation):
-    #returns a list of vectors pointing from the origin to each corner of the box
-    
-    rot_matrix = rotation.to_matrix()
-    corners = []
-    
-    for x_sign in [-1, 1]:
-        for y_sign in [-1, 1]:
-            for z_sign in [-1, 1]:
-                mat = Matrix([
-                    [x_sign, 0, 0],
-                    [0, y_sign, 0],
-                    [0, 0, z_sign]
-                ])
-                corners.append(size / 2 @ mat @ rot_matrix.inverted() + origin)
-                
-    return corners
-
-def check_box_intersection(bbox1, bbox2):
-    """
-    For each bbox expects a tuple:
-    (
-        origin : Mathutils.Vector,
-        size: Mathutils.Vector,
-        rotation: Mathutils.Euler
-    )
-    """
-    radius1 = (bbox1[1] / 2).length
-    radius2 = (bbox2[1] / 2).length
-    
-    if get_distance(bbox1[0], bbox2[0]) > radius1 + radius2:
-        #if the distance of the 2 boxes origin is greater than the sum of the radiuses
-        #of the circumscribed spheres there can't be any intersection
-        return False
-    
-    for axis in range(3):
-        if (bbox1[0] - bbox2[0])[axis] < min(bbox1[1][axis], bbox2[1][axis]):
-            return True
-    
-    corners1 = get_box_corners(*bbox1)
-    for corner in corners1:
-        if check_point_intersection(corner, *bbox2):
-            return True
-        
-    corners2 = get_box_corners(*bbox2)
-    for corner in corners2:
-        if check_point_intersection(corner, *bbox2):
-            return True
-        
-    return False
-
-def color_from_hex(h : str) -> mathutils.Color:
-    if h.startswith("#"):
-        h = h[1:]
-
-    color = tuple(int(h[i:i+2], 16) / 255 for i in (0, 2, 4)) #color in rgb 0-1 format
-    color_srgb = mathutils.Color(color) #color in srgb format
-    return mathutils.Color.from_srgb_to_scene_linear(color_srgb)

@@ -1,3 +1,4 @@
+
 """
 Copyright 2024-present, Matteo Bicchi
 All rights reserved
@@ -26,10 +27,9 @@ from datetime import datetime
 from math import sin, cos, radians, degrees, sqrt
 import random, os, json
 from random import randint
-from SSHAPE_Dataset_generator.errors import *
-from SSHAPE_Dataset_generator.utils import *
-from SSHAPE_Dataset_generator.categories import create_categories_list, get_category_name
-from SSHAPE_Dataset_generator.configure_gpus import set_render_args
+from SSHAPE_Dataset_generator.utils.errors import *
+from SSHAPE_Dataset_generator.utils.geometry import *
+from SSHAPE_Dataset_generator.utils.categories import create_categories_list, get_category_name
 from icecream import ic
 import numpy as np
 
@@ -83,39 +83,15 @@ class DatasetRenderer:
         scene.collection.objects.link(self.camera_obj)
         scene.camera = self.camera_obj
         
-        render_args = bpy.context.scene.render
-        """
-        render_args.engine = "CYCLES"
-        render_args.resolution_x = args.images_width
-        render_args.resolution_y = args.images_height
-        render_args.resolution_percentage = 100 #NOTE: Changing this will probably mess up bounding boxes calculation
-
-        if args.use_gpu == 1:
-            cycles_prefs = bpy.context.preferences.addons['cycles'].preferences 
-            cycles_prefs.compute_device_type = 'CUDA'
-            bpy.context.scene.cycles.device = 'GPU'
-            bpy.context.preferences.addons["cycles"].preferences.get_devices()
-            for d in bpy.context.preferences.addons["cycles"].preferences.devices:
-                d["use"] = 1 # Using all devices, include GPU and CPU
-                print(d["name"], d["use"])
-
-        bpy.data.worlds['World'].cycles.sample_as_light = True
-        bpy.context.scene.cycles.blur_glossy = 2.0
-        bpy.context.scene.cycles.samples = 128
-        bpy.context.scene.cycles.transparent_min_bounces = 6
-        bpy.context.scene.cycles.transparent_max_bounces = 8
-        """
-        set_render_args(self.args.use_devices)
-        print("Rendering with devices:", self.args.use_devices)
-
         #add primitive plane  
-        self.primitive_plane = bpy.ops.mesh.primitive_plane_add(size=args.area_size)
+        #self.primitive_plane = bpy.ops.mesh.primitive_plane_add(size=args.area_size)
 
         #load materials
         self.load_materials()
         self.create_directory_tree()
 
         #
+        render_args = bpy.context.scene.render
         render_scale = render_args.resolution_percentage / 100
         self.render_size = (
             int(render_args.resolution_x * render_scale),
@@ -181,7 +157,6 @@ class DatasetRenderer:
             if not args.test_mode:
                 while True:
                     try:
-                        set_render_args(self.args.use_devices)
                         bpy.ops.render.render(write_still=True)
                         if args.create_segmentations == 1 or args.create_depth == 1:
                             gnd_truth = bpycv.render_data(render_image=False)
@@ -303,23 +278,28 @@ class DatasetRenderer:
 
             allowed_colors = self.rules.get_material_allowed_colors(mat_rule["name"])
 
-            if len(allowed_colors) == 0: #load material without color
-                self.create_material(mat_rule)
+            if len(allowed_colors) == 0: #material is already loaded with no color variants
+                return 
 
             for color in allowed_colors: #load all combinations of color and material
                 color_rule = self.rules.colors[color]
                 self.create_material(mat_rule, color_rule)
 
 
-    def create_material(self, mat_rule, col_rule=None):
+    def create_material(self, mat_rule, col_rule):
         # Adds a new material to the scene
         # Args:
         # - mat_rule : Rule for the material
-        # - col_rule : If left None no color will be applied, otherwise it's the rule for
-        #              the color to be applied to the material.
-        bpy.ops.material.new()
-        mat = bpy.data.materials['Material']
+        # - col_rule : The color to be applied to the material.
         
+        mat_name = f"{mat_rule['name']}_{col_rule['name']}"
+        print("Creating composite material:", mat_name)
+
+        bpy.data.materials.new(name=mat_name)
+        mat = bpy.data.materials[mat_name]
+
+        mat.use_nodes = True
+
         output_node = mat.node_tree.nodes["Material Output"]
 
         #create a new group for the material node tree
@@ -327,11 +307,7 @@ class DatasetRenderer:
         #copy the material node tree into the new group
         group_node.node_tree = bpy.data.node_groups[mat_rule["name"]]
 
-        if col_rule is None:
-            mat.name = f"{mat_rule['name']}"
-        else:
-            group_node.inputs["Color"].default_value = [*color_from_hex(col_rule["hex"]), col_rule["opacity"]]
-            mat.name = f"{mat_rule['name']}_{col_rule['name']}"
+        group_node.inputs["Color"].default_value = [*color_from_hex(col_rule["hex"]), col_rule["opacity"]]
 
         mat.node_tree.links.new(
             group_node.outputs["Shader"],
@@ -397,26 +373,21 @@ class DatasetRenderer:
             if shape_rule["scaling"] != "none":
                 random_scale = self.random_scale(obj_blender, shape_rule)
 
-            #apply fixed rotation and random rotation if needed
-            rotate(obj_blender, shape_rule["fixed_rotation"])
-            random_rotation = [0, 0, 0]
-            if shape_rule["random_rotation"] != "none":
-                random_rotation = self.random_rotate(obj_blender, shape_rule)
-
+            object_annotations["scale"] = random_scale
+            
             #apply random flips
             if shape_rule["flip"] != "none":
                 self.random_flip(shape_rule["flip"])
 
-            object_annotations["scale"] = random_scale
-            object_annotations["rotation"] = [random_rotation[i] + shape_rule["fixed_rotation"][i] for i in range(3)] #sum random and fixed rotation
+            # Attempt random placement and rotation until the shape is correctly placed
+            pos, rotation = self.try_shape_placement(obj_blender, shape_rule, object_annotations) 
 
-            bpy.context.view_layer.objects.active = obj_blender
-            bpy.ops.object.transform_apply(rotation=True, scale=True)
+            if pos is None:
+                bpy.data.objects.remove(obj_blender, do_unlink=True)
+                continue
 
-            #position the shape randomly
-            pos = self.try_shape_placement(obj_blender, shape_rule, object_annotations)
-            if pos is not None:
-                object_annotations["position"] = pos
+            object_annotations["position"] = pos
+            object_annotations["rotation"] = rotation
 
             #apply material and color
             if mat_rule is not None:
@@ -424,7 +395,7 @@ class DatasetRenderer:
                     material_blender = bpy.data.materials[f"{mat_name}"]
                 else:
                     material_blender = bpy.data.materials[f"{mat_name}_{col_name}"]
-            
+                
                 obj_blender.data.materials.append(material_blender)
 
             #get annotations for training
@@ -442,6 +413,10 @@ class DatasetRenderer:
                 })
 
             self.annotations["scenes"][-1][group].append(object_annotations)
+
+    def apply_transform(self, obj, location=True, rotation=True, scale=True):
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.transform_apply(location=location, rotation=rotation, scale=scale)
 
     def choose_random_appearance(self, shape_rule):
         # Returns random material and color rules
@@ -464,7 +439,6 @@ class DatasetRenderer:
 
         blender_obj = bpy.data.objects[name]
         blender_obj.name = f"OBJECT_{name}_{object_annotation['id']}"
-
 
         #assign instance id
         categories = self.annotations["categories"]
@@ -520,25 +494,7 @@ class DatasetRenderer:
         )
         
         if shape_rule["random_rotation"]["auto_snap_face"]:
-            #Auto rotate so that the normal of a random face is aligned to AUTO_ROTATION_VECT
-            for attempt in range(16):
-                normal = random.choice(obj.data.polygons).normal #normal of a random face
-                angle = normal.angle(AUTO_ROTATION_VECT) #angle between normal and AUTO_ROTATION_VECT
-                axis = normal.cross(AUTO_ROTATION_VECT) #axis perpendicular to normal and AUTO_ROTATION_VECT
-                matrix = mathutils.Matrix.Rotation(angle, 3, axis)
-                rotation_radians = matrix.to_euler()
-                valid = True
-                for axis in range(3):
-                    if (degrees(rotation_radians[axis]) <= shape_rule["random_rotation"]["max_bounds"][axis]
-                    and degrees(rotation_radians[axis]) >= shape_rule["random_rotation"]["min_bounds"][axis]):
-                        rotation[axis] = degrees(rotation_radians[axis])
-                    else:
-                        valid=False
-                        break
-                if valid:
-                    break
-            
-            #Add z rotation if needed
+           #Add z rotation if needed
             if shape_rule["random_rotation"]["snap"][2] != 0:
                 rotation[2] = get_random_angle(2)
 
@@ -562,32 +518,74 @@ class DatasetRenderer:
 
         bpy.ops.transform.mirror(constraint_axis=flips)
 
+    def snap_rotate(self, obj, gnd_norm, shape_rule):
+        #Auto rotate so that the normal of  random fac
+
+        allowed_faces = shape_rule["random_rotation"]["faces_for_snapping"]
+        if allowed_faces == "all":
+            face = random.choice(obj.data.polygons)
+        else:
+            face = obj.data.polygons[random.choice(allowed_faces)]
+
+        angle = face.normal.angle(gnd_norm * -1) #angle between normal and flipped gnd_norm
+        axis = face.normal.cross(gnd_norm * -1) #axis perpendicular to normal and flipped gnd_norm
+        matrix = mathutils.Matrix.Rotation(angle, 3, axis)
+        rotation_radians = matrix.to_euler()
+        rotation = [degrees(r) for r in rotation_radians]
+
+        rotate(obj, rotation)
+        return rotation
+
     def try_shape_placement(self, obj, shape_rule, obj_annotations, max_attempts=50):
         for attempt in range(max_attempts):
             get_random_pos = lambda: random.uniform(self.args.padding - self.args.area_size / 2, self.args.area_size / 2 - self.args.padding)
             pos = [get_random_pos() for i in range(3)]
-            if shape_rule["snap_to_plane"] == True:
-                origin = mathutils.Vector((0,0,0))
+            
+            if shape_rule["snap_to_plane"] and not self.check_min_distance(pos, obj_annotations, ignore_z=True):
+                continue
+            elif not self.check_min_distance(pos, obj_annotations):
+                continue
+
+            rotation = [0, 0, 0]
+            if shape_rule["snap_to_plane"] or shape_rule["random_rotation"]["auto_snap_face"]:
+
+                origin = mathutils.Vector((pos[0], pos[1], 1000))
                 dir = mathutils.Vector((0,0,-1))
-                hit, point, face, index = obj.ray_cast(origin, dir)
-                pos[2] = point.length
-                    
-            if self.check_min_distance(pos, obj_annotations):
+                gnd_location, gnd_normal = project_ray_world(origin, dir, 10000)
+                if gnd_location is None: 
+                    continue
+
+                if shape_rule["random_rotation"]["auto_snap_face"]:
+                    rotation = self.snap_rotate(obj, gnd_normal, shape_rule)
+                else:
+                    rotation = self.random_rotate(obj, shape_rule)
+                
+
+                if shape_rule["snap_to_plane"]:
+                    #move object so that the lowest point of the shape touches the ground
+                    self.apply_transform(obj)
+                    lowest_z = min([obj.matrix_world @ vert.co for vert in obj.data.vertices], key=lambda v: v.z).z
+                    pos[2] = gnd_location.z - lowest_z
+
                 obj.location = pos
-                return pos
+                self.apply_transform(obj)
+                return pos, rotation
         
         print(f"Unable to place shape {obj_annotations['id']} after {max_attempts} attempts, the shape will" + 
               "be removed.\nThis warning is probably a result of too many shapes, too high 'min_distance' or a too" +
               "low area size.\nIf this error pops up more than once you should probably modify those values.")
-        return None
+        return None, None
     
-    def get_segmentation(self):
-        pass
-    
-    def check_min_distance(self, pos, obj_annotations):
+    def check_min_distance(self, pos, obj_annotations, ignore_z = False):
         #returns true if the object respects the 'min_distance' rule from all the other shapes of the last scene
         for other_object in self.annotations["scenes"][-1]["objects"] + self.annotations["scenes"][-1]["decoys"]:
-            distance = get_distance(Vector(other_object["position"]), Vector(pos)) #distance between two shapes
+            
+            pos_vec_1 = Vector(other_object["position"])
+            pos_vec_2 = Vector(pos)
+            if ignore_z:
+                pos_vec_1.z = 0
+                pos_vec_2.z = 0
+            distance = get_distance(pos_vec_1, pos_vec_2) #distance between two shapes
 
             #minimum distances scaled to the max scaling along an axis of each object
             min_distance_1 = other_object["shape"]["min_distance"] * max(*other_object["scale"])
@@ -633,5 +631,3 @@ class DatasetRenderer:
             highest_values[0] - lowest_values[0],
             highest_values[1] - lowest_values[1]
         ]
-
-        

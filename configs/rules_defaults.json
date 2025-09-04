@@ -56,7 +56,8 @@
         "snap" : [20, 20, 20],
         "min_bounds" : [0, 0, 0],
         "max_bounds" : [360, 360, 360],
-        "auto_snap_face" : false
+        "auto_snap_face" : false,
+        "faces_for_snapping" : "all"
     },
     "degradation" : {
         "file" : "REQUIRED",
@@ -68,5 +69,9 @@
         "xy" : "REQUIRED",
         "xz" : "REQUIRED",
         "yz" : "REQUIRED"
+    },
+    "categories" : {
+        "ignore_color" : false,
+        "ignore_material" : true
     }
 }

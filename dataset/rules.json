@@ -2,56 +2,28 @@
     "objects": [
         {
             "id" : 0,
-            "file" : "pyramid.blend",
+            "file" : "cube.blend",
             "allowed_colors" : "all",
             "allowed_materials" : ["matte", "metal"],
-            "min_distance" : 0.2,
-            "scaling" : "$consistent_scaling",
+            "min_distance" : 0.4,
+            "scaling" : "$free_scaling",
             "random_rotation" : {
                 "auto_snap_face" : true
-                "snap" : [0, 0, 20],
-                "max_bounds" : [0, 0, 180],
-                "min_bounds" : [0, 0, 0]
             }, 
             "snap_to_plane" : true
         },
         {
             "file" : "cylinder.blend",
             "id" : 1,
-            "allowed_colors" : ["white", "yellow"],
-            "allowed_materials" : ["lighting"],
-            "min_distance" : 0.2,
-            "scaling" : "$free_scaling",
-            "random_rotation" : {
-                "snap" : [0, 90, 20],
-                "max_bounds" : [0, 90, 180]
-            },
-            "snap_to_plane" : true
-        }
-    ],
-    "decoys" : [
-        {
-            "id" : 100,
-            "name" : "pen",
-            "file" : "pen.blend",
             "allowed_colors" : "all",
             "allowed_materials" : ["matte", "metal"],
-            "min_distance" : 0.2,
-            "scaling" : {
-                "min" : 0.5,
-                "max" : 1,
-                "step" : 0.25,
-                "consistent" : "all"
-            },
-            "fixed_rotation" : [90, 0, 0],
+            "min_distance" : 0.4,
+            "scaling" : "$consistent_scaling",
             "random_rotation" : {
-                "max_bounds" : [0, 180, 0],
-                "snap" : [0, 30, 0]
-            },
-            "flip" : {
-                "xz" : "random",
-                "xy" : false,
-                "yz" : false
+                "auto_snap_face" : true,
+                "faces_for_snapping" : [33, 30, 0],
+                "snap" : [0, 90, 20],
+                "max_bounds" : [0, 90, 180]
             },
             "snap_to_plane" : true
         }
@@ -70,19 +42,6 @@
             }
         },
         {
-            "id" : 1,
-            "name" : "lighting",
-            "file": "lighting.blend",
-            "allowed_colors" : "all",
-            "degradation" : "none",
-            "emission" : {
-                "color" : "dynamic",
-                "min" : 0.1,
-                "max" : 0.4,
-                "step" : 0.1
-            }
-        },
-        {
             "id" : 2,
             "name" : "metal",
             "file" : "metal.blend",
@@ -98,13 +57,13 @@
     ],
     "macros" : {
         "consistent_scaling" : {
-            "min" : 0.1,
+            "min" : 0.4,
             "max" : 1,
-            "step" : 0.3,
+            "step" : 0.2,
             "consistent" : "all"
         },
         "free_scaling" : {
-            "min" : 0.2,
+            "min" : 0.4,
             "max" : 1,
             "step" : 0.2,
             "consistent" : "none",
@@ -135,21 +94,21 @@
         {
             "name" : "green",
             "id" : 4,
-            "hex" : "##367325",
+            "hex" : "#367325",
             "opacity" : 1,
             "emission" : "#367325"
         },
         {
             "name" : "yellow",
             "id" : 6,
-            "hex" : "##ffdc52",
+            "hex" : "#ffdc52",
             "opacity" : 1,
             "emission" : "#ffdc52"
         },
         {
             "name" : "blue",
             "id" : 7,
-            "hex" : "##3456bf",
+            "hex" : "#3456bf",
             "opacity" : 1,
             "emission" : "#3456bf"
         },

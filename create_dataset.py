@@ -17,10 +17,10 @@ You should have received a copy of the GNU General Public License along with SSH
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from SSHAPE_Dataset_generator.utils import *
+from SSHAPE_Dataset_generator.utils.arguments import *
 from SSHAPE_Dataset_generator.render import DatasetRenderer
-from SSHAPE_Dataset_generator.rules_utils import Rules
-from SSHAPE_Dataset_generator import configure_gpus
+from SSHAPE_Dataset_generator.utils.rules import Rules
+from SSHAPE_Dataset_generator.scripts import configure_gpus
 import bpy, bpy_extras  #type:ignore
 from bpy import context #type:ignore
 import os, pathlib, json, subprocess, sys
@@ -72,8 +72,9 @@ if __name__ == "__main__":
             renderer.render()
     else:
         if args.resume:
-            pass
+            print("[ERROR] Right now multi GPU rendering is not compatible with resuming, restarting from scratch")
         else:
+            print("[WARNING] Multi GPU rendering is still experimental") 
             assert args.gpu_groups is not None, "'gpu_groups' argument is not optional when multi gpu rendering is enabled" 
             #do a benchmark on each gpu group to check how fast each one is
             gpu_groups = [g.split(",") for g in args.gpu_groups]
@@ -100,7 +101,6 @@ if __name__ == "__main__":
                             use_devices=" ".join([f'"{g}"' for g in gpu_groups[i]]),
                             gpu_groups=None
                             )
-                
                 
                 sp = subprocess.Popen(["blender", "-b", "--python", "create_dataset.py", "--"] + group_args)
                 subprocesses.append(sp)

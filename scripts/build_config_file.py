@@ -26,7 +26,7 @@ otherwise default values will be used.
 
 """
 
-from SSHAPE_Dataset_generator.utils import setup_argparser, extract_args
+from SSHAPE_Dataset_generator.utils.arguments import setup_argparser, extract_args
 import sys, json
 from pprint import pprint
 

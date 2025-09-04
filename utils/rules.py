@@ -17,25 +17,84 @@ You should have received a copy of the GNU General Public License along with SSH
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from SSHAPE_Dataset_generator.errors import *
-from SSHAPE_Dataset_generator.utils import intersect
+from SSHAPE_Dataset_generator.utils import *
+from SSHAPE_Dataset_generator.utils.errors import *
 import json
 from typing import TypeAlias
 
 Identifier: TypeAlias = int | str
 
+def complete_rules(rules, defaults):
+    macros = rules.get("macros", None)
+    rules.pop("macros")
+    check_rule(rules["objects"] + rules["decoys"], defaults, "shape", macros)
+    check_rule(rules["materials"], defaults, "material", macros)
+    check_rule(rules["colors"], defaults, "color", macros)
+
+def check_rule(rule, defaults, rule_name, macros):
+    default = defaults[rule_name]
+    #list of dicts, unique values already used
+    in_use_uniques = []
+
+    for element in rule:
+        element_uniques = {} #stores unique values for this element
+        for attribute in default.keys():
+            value = element.get(attribute, None)
+            default_value = default[attribute]
+            #Substitute macros
+            if type(value) == str and value.startswith("$"):
+                macro_name = element[attribute][1:]
+                if macros is not None and macros.get(macro_name, None) is not None:
+                    element[attribute] = macros[macro_name]
+                else:
+                    raise UndefinedMacroError(macro_name)
+
+            #Check for required values
+            if type(default_value) == str and default_value.split(";")[0] == "REQUIRED" and value is None:
+                raise RequiredAttributeNotFoundError(attribute, rule_name)
+            
+            #Add dynamic default values
+            elif type(default_value) == str and default_value.startswith("=") and value is None:
+                str_func = default_value[1:]
+                if ";" in str_func:
+                    str_func = str_func.split(";")[0]
+                func = eval(str_func)
+                element[attribute] = func(element)
+
+            #Add static default values
+            elif value is None:
+                element[attribute] = default_value
+            elif type(value) == dict:
+                check_rule([element[attribute]], defaults, attribute, macros)
+
+            #If value is unique add it to 'element_uniques'
+            try:
+                if default_value.split(";")[1] == "UNIQUE":
+                    element_uniques[attribute] = element[attribute]
+            except IndexError: pass #In case of no ';', which would trigger an index out of bounds exception
+            except AttributeError: pass #In case of the value not being a string
+
+        #Check if unique values used are duplicate
+        for unique_attr in element_uniques.keys():
+            for in_use in in_use_uniques:
+                if element_uniques[unique_attr] == in_use[unique_attr]:
+                    raise DuplicateValueError(unique_attr, rule_name)
+                
+ 
 class Rules:
     def __init__(self, rules):
         defaults = {}
 
-        with open("./rules_defaults.json", "r") as f:
+        with open("./configs/rules_defaults.json", "r") as f:
             defaults = json.load(f)
 
         self.objects = RulesSection(rules, "objects", defaults)
         self.decoys = RulesSection(rules, "decoys", defaults)
         self.colors = RulesSection(rules, "colors", defaults)
         self.materials = RulesSection(rules, "materials", defaults)
-        self.categories = rules["categories"]
+
+        self.categories =  defaults["categories"]
+        self.categories.update(rules.get("categories", {}))
 
     def get_dict(self):
         return {
@@ -124,7 +183,7 @@ class Rules:
 class RulesSection:
     def __init__(self, rules, section_name, defaults):
         self.name__ = section_name
-        self.section__ = rules[section_name]
+        self.section__ = rules.get(section_name, [])
         check_rule(self.section__, defaults, section_name, rules.get("macros", {}))
         self.rules__ = rules
 

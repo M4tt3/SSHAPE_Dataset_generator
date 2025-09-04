@@ -19,7 +19,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import time
 import bpy #type:ignore
-from SSHAPE_Dataset_generator.utils import extract_args
+from SSHAPE_Dataset_generator.utils.arguments import extract_args
 import argparse
 
 def setup_argparser():
