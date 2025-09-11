@@ -11,8 +11,11 @@ If you like the project **sharing** it could be really helpful.
 <h2><li> Install</h2>
 
 ### Prerequsites
-To run this script you must have [Blender](https://www.blender.org/) installed on your system.  
-The script will work on blender version >=3.0 and <=3.6, but version 3.6 is advised, in case of compatibility issues on theese versions please post an issue.
+To run this script you must have [Blender](https://www.blender.org/) installed on your system.
+
+#### Compatibility:
+Development was done on **Blender 4.4** running on Ubunutu **22.04**.
+The package should be compatible with previous Blender versions until **3.0** (not tested) and should also work on **Windows** (could need minor adjustments for the installation instructions).
 
 ### Navigate to the packages directory of embedded python
 
