@@ -18,7 +18,7 @@ The script will work on blender version >=3.0 and <=3.6, but version 3.6 is advi
 
 Run the following script in a terminal.
 
-    cd {BLENDER}/{BLENDER VERSION}/python/lib
+    cd {BLENDER}/{BLENDER VERSION}/python/lib/python3.11
 
 Replace **{BLENDER}** in with your blender installation directory, and **{BLENDER VERSION}** with your blender version, which you can get by running `blender --version`.
 
@@ -27,50 +27,32 @@ Dowload SSHAPE_Dataset_generator by running the following command.
 
     git clone https://github.com/M4tt3/SSHAPE_Dataset_generator.git
 
-<h2><li> Install bpycv </h2>
+<h2><li> Install dependencies </h2>
 
-[bpycv](https://github.com/DIYer22/bpycv) is a library used to generate instance annotations (segmentation, depth, ...), it is required to run this script.  
+Blender has its own binaries for python located at the following path:
 
-To install run an elevated terminal, navigate to the blender installation dir and run the following commands:
+    cd {BLENDER}/{BLENDER VERSION}/python/bin
 
-### Install pip (or update if installed)
+Then using the executables in that directory install pip and dependencies:
 
-    blender -b --python-expr "from subprocess import sys,call;call([sys.executable,'-m','ensurepip'])"
-
-### Update pip toolchain
-
-    blender -b --python-expr "from subprocess import sys,call;call([sys.executable]+'-m pip install -U pip setuptools wheel'.split())"
-
-### Install bpycv with pip
-
-    blender -b --python-expr "from subprocess import sys,call;call([sys.executable]+'-m pip install -U bpycv'.split())"
-
+    ./python3.11 -m enurepip
+    ./python3.11 -m pip install -U pip setuptools wheel bpycv icecream tqdm
 
 ### Check installation
 Once the installation is done you can check that bpycv was correctly installed by running:
 
     blender -b -E CYCLES --python-expr "import bpycv,cv2;d=bpycv.render_data();bpycv.tree(d);cv2.imwrite('/tmp/try_bpycv_vis(inst-rgb-depth).jpg', d.vis()[...,::-1])"
 
-
-
-<h2><li> (OPTIONAL) Install tqdm</h2>
-
-[tqdm](https://tqdm.github.io/) is a python library used to show a progress bar during rendering.  
-Not installing tqdm will have no effect on performance but it can be handy to get information about progress during rendering.
-
-Run the following to install tqdm
-
-    {BLENDER}/{BLENDER VERSION}/python/bin/python -m pip install tqdm
-
-Replace **{BLENDER}** in with your blender installation directory, and **{BLENDER VERSION}** with your blender version, which you can get by running `blender --version`.
-
 <h2><li> Setup rules </h2>
 
-Rules files store all the objects and decoys to be used, the materials and colors to be applied, and the transformations contstraints.  
+Rules files store all the objects and decoys to be used, the materials and colors to be applied, camera and lights constraints, etc.
 To define the rules for your dataset first start from this template:
 
 ```json
 {
+    "world" : {},
+    "camera" : {},
+    "lights" : {},
     "objects" : [],
     "decoys" : [],
     "materials" : [],
@@ -187,7 +169,7 @@ To get a list of all the arguments run:
 
 To create a config file run:
 
-    blender --background --python build_config_file.py -- {OUTPUT FILE}
+    blender --background --python scripts/build_config_file.py -- {OUTPUT FILE}
 
 Replace **{OUTPUT FILE}** with the file where the configuration must be written.   
 After the output file you can put all the arguments and the values you want to assign them or you can leave it empty and modify them directly in the output file.
@@ -201,5 +183,9 @@ To start the rendering process simply use this command and put all the arguments
 If you want to use a config file you can simply use the argument `--config`:
 
     blender --background --python create_dataset.py -- --config {PATH TO CONFIG}
+
+To check for issues you can use the argument `--test_mode 1` without `--background`, this doesn't render the image and lets you go around the generated scene:
+
+    blender --python create_dataset.py -- --test_mode 1 
 
 </ol>

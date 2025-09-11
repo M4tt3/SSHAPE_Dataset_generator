@@ -44,6 +44,9 @@ def setup_argparser():
                     help="Whether or not to use gpu fo rendering (1 for yes, 0 for no).")
     #ap.add_argument("--image_format", default="jpg",
     #                help="Saving format for images, must be supported bu OpenCV")
+    ap.add_argument("--min_pixels_per_object", default=200, type=int,
+                    help="Minimum pixels visible for every object, if this condition is not met the " +
+                    "scene is discarded and recreated.")
     ap.add_argument("--create_segmentations", default=1, type=int,
                     help="Whether or not to create segmentation ground truth data (1 for yes, 0 for no).")
     ap.add_argument("--create_depth", default=1, type=int,
@@ -67,45 +70,42 @@ def setup_argparser():
     ap.add_argument("--config", default=None,
                     help="Config file (JSON) to use instead of command line arguments")
     # --------------- SETTINGS ---------------
-    ap.add_argument("--area_size", default=3, type=int,
-                    help="Size of the working area.")
-    ap.add_argument("--min_num_objects", default=2, type=int,
-                    help="Minimum number of objects in every scene.")
-    ap.add_argument("--max_num_objects", default=6, type=int,
-                    help="Maximum number of objects in every scene.")
-    ap.add_argument("--min_num_decoys", default=0, type=int,
-                    help="Minimum number of decoys in every scene.")
-    ap.add_argument("--max_num_decoys", default=2, type=int,
-                    help="Maximum number of decoys in every scene.")
-    ap.add_argument("--min_num_lights", default=1, type=int,
-                    help="Minimum number of decoys in every scene.")
-    ap.add_argument("--max_num_lights", default=3, type=int,
-                    help="Maximum number of lights in every scene.")
-    ap.add_argument("--camera_distance", default=2.5, type=float,
-                    help="Distance between the camera and the origin.")
-    ap.add_argument("--min_camera_pitch", default=30, type=int,
-                    help="Minimum angle (in degrees) of rotation  of the camera along the y axis.")
-    ap.add_argument("--max_camera_pitch", default=80, type=int,
-                    help="Maximum angle (in degrees) of rotation  of the camera along the y axis.")
-    ap.add_argument("--min_camera_yaw", default=0, type=int,
-                    help="Minimum angle (in degrees) of rotation  of the camera along the z axis.")
-    ap.add_argument("--max_camera_yaw", default=0, type=int,
-                    help="Maximum angle (in degrees) of rotation  of the camera along the z axis.")
-    ap.add_argument("--padding", default=0.6, type=float,
-                    help="Minimum distance between the center projection on the base plane of every "+
-                         "object and the plane boundaries.")
-    ap.add_argument("--min_pixels_per_object", default=200, type=int,
-                    help="Minimum pixels visible for every object, if this condition is not met the " +
-                         "scene is discarded and recreated.")
-    ap.add_argument("--lights_jitter", default=0.4, type=float,
-                    help="Max amount of random movement from the default position of each light.")
-    ap.add_argument("--lights_distance", default=3, type=float,
-                    help="Distance at which the lights are placed.")
-    ap.add_argument("--lights_intensity", default=60, type=float,
-                    help="Intensity of lights.")
+    #ap.add_argument("--area_size", default=3, type=int,
+    #                help="Size of the working area.")
+    #ap.add_argument("--min_num_objects", default=2, type=int,
+    #                help="Minimum number of objects in every scene.")
+    #ap.add_argument("--max_num_objects", default=6, type=int,
+    #                help="Maximum number of objects in every scene.")
+    #ap.add_argument("--min_num_decoys", default=0, type=int,
+    #                help="Minimum number of decoys in every scene.")
+    #ap.add_argument("--max_num_decoys", default=2, type=int,
+    #                help="Maximum number of decoys in every scene.")
+    #ap.add_argument("--min_num_lights", default=1, type=int,
+    #                help="Minimum number of decoys in every scene.")
+    #ap.add_argument("--max_num_lights", default=3, type=int,
+    #                help="Maximum number of lights in every scene.")
+    #ap.add_argument("--camera_distance", default=2.5, type=float,
+    #                help="Distance between the camera and the origin.")
+    #ap.add_argument("--min_camera_pitch", default=30, type=int,
+    #                help="Minimum angle (in degrees) of rotation  of the camera along the y axis.")
+    #ap.add_argument("--max_camera_pitch", default=80, type=int,
+    #                help="Maximum angle (in degrees) of rotation  of the camera along the y axis.")
+    #ap.add_argument("--min_camera_yaw", default=0, type=int,
+    #                help="Minimum angle (in degrees) of rotation  of the camera along the z axis.")
+    #ap.add_argument("--max_camera_yaw", default=0, type=int,
+    #                help="Maximum angle (in degrees) of rotation  of the camera along the z axis.")
+    #ap.add_argument("--padding", default=0.6, type=float,
+    #                help="Minimum distance between the center projection on the base plane of every "+
+    #                     "object and the plane boundaries.")
+    #ap.add_argument("--lights_jitter", default=0.4, type=float,
+    #                help="Max amount of random movement from the default position of each light.")
+    #ap.add_argument("--lights_distance", default=3, type=float,
+    #                help="Distance at which the lights are placed.")
+    #ap.add_argument("--lights_intensity", default=60, type=float,
+    #                help="Intensity of lights.")
     ap.add_argument("--test_mode", default=0, type=int,
                     help="Sets testing mode (1 for yes, 0 for no), see docs 'Testing mode'.")
-    ap.add_argument("--start_index", default=0, type=int)
+    #ap.add_argument("--start_index", default=0, type=int)
     
     # --------------- RENDERING OPTIONS ---------------
 

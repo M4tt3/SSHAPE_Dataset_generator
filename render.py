@@ -1,4 +1,3 @@
-
 """
 Copyright 2024-present, Matteo Bicchi
 All rights reserved
@@ -27,6 +26,7 @@ from datetime import datetime
 from math import sin, cos, radians, degrees, sqrt
 import random, os, json
 from random import randint
+import random
 from SSHAPE_Dataset_generator.utils.errors import *
 from SSHAPE_Dataset_generator.utils.geometry import *
 from SSHAPE_Dataset_generator.utils.categories import create_categories_list, get_category_name
@@ -42,6 +42,7 @@ import bpycv, cv2
 #Shapes with random_rotation.snap set to auto will have the normal of a random face aligned with this vector
 #NOTE: Right now changing this vector is not properly supported
 AUTO_ROTATION_VECT = mathutils.Vector((0, 0, -1))
+SCENE_MAX_Z = 1000
 
 class DatasetRenderer:
     def __init__(self, args, rules, checkpoint=None):
@@ -74,29 +75,20 @@ class DatasetRenderer:
                      
         #create and place camera
         cam = bpy.data.cameras.new("Camera")
-        cam.lens = 20
-
+        cam.lens = self.rules.camera["lens"]
         self.camera_obj = bpy.data.objects.new("Camera", cam)
-        self.camera_obj.location = (0, 0, 0)
-        self.camera_obj.rotation_euler = (0, 0, 0)
 
         scene.collection.objects.link(self.camera_obj)
         scene.camera = self.camera_obj
-        
-        #add primitive plane  
-        #self.primitive_plane = bpy.ops.mesh.primitive_plane_add(size=args.area_size)
 
         #load materials
         self.load_materials()
         self.create_directory_tree()
 
-        #
+        # Set image resolution
         render_args = bpy.context.scene.render
-        render_scale = render_args.resolution_percentage / 100
-        self.render_size = (
-            int(render_args.resolution_x * render_scale),
-            int(render_args.resolution_y * render_scale)
-        )
+        render_args.resolution_x = args.images_width
+        render_args.resolution_y = args.images_height
 
     def create_directory_tree(self):
         #setup output directory tree
@@ -135,17 +127,30 @@ class DatasetRenderer:
                 "date_captured" : datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "license" : -1
             }
+            
+            # Cluster will be placed in a random position inside a cuboid of size cluster_area (world rule)
+            get_rand_pos = lambda i: random.uniform(-self.rules.world["cluster_area"][i] / 2, self.rules.world["cluster_area"][i] / 2)
+            cluster_pos = [
+                get_rand_pos(i) + self.rules.world["offset"][i] for i in range(3)
+            ]
+
+            if self.rules.world["snap_cluster_to_ground"]:
+                gnd_pos, _ = self.get_ground(cluster_pos)
+                cluster_pos[2] = gnd_pos[2]
 
             #scene metadata
             scene = {
-                "camera_position" : self.get_camera_position(),
-                "lights" : self.get_lights_positions(),
                 "objects" : [],
-                "decoys" : []
+                "decoys" : [],
+                "cluster_position" : cluster_pos
             }
+
 
             self.annotations["scenes"].append(scene)
             self.annotations["images"].append(image_info)
+
+            scene["lights"] = self.get_lights_positions()
+            scene["camera"] = self.get_camera_position()
 
             self.populate_scene()
 
@@ -213,22 +218,26 @@ class DatasetRenderer:
         # Generate random pitch and yaw values for the camera, move the camera
         # to that position at a fixed distance from the origin, point the camera
         # towards the origin and returns camera x, y, z position
+            
+        rule = self.rules.camera
 
-        pitch = randint(self.args.min_camera_pitch, self.args.max_camera_pitch)
-        yaw = randint(self.args.min_camera_yaw, self.args.max_camera_yaw)
+        pitch = random.uniform(rule["min_pitch"], rule["max_pitch"])
+        yaw = random.uniform(rule["min_yaw"], rule["max_yaw"])
+        distance = random.uniform(rule["min_distance"], rule["max_distance"])
 
         pos = [
-            self.args.camera_distance * sin(radians(yaw)),
-            self.args.camera_distance * cos(radians(yaw)),
-            self.args.camera_distance * sin(radians(pitch))
+            distance * sin(radians(yaw)),
+            distance * cos(radians(yaw)),
+            distance * sin(radians(pitch))
         ]
 
-        #move camera into position and focus it on the origin
         self.camera_obj.location = pos
 
         rot_quat = self.camera_obj.location.to_track_quat('Z', 'Y')
         self.camera_obj.rotation_euler = rot_quat.to_euler()
-        self.camera_obj.location = rot_quat @ mathutils.Vector((0.0, 0.0, self.args.camera_distance))
+
+        pos = self.get_offset_position(pos)
+        self.camera_obj.location = pos
 
         return pos
 
@@ -236,20 +245,28 @@ class DatasetRenderer:
         # Chooses a random number of lights, moves them at a random position at
         # a fixed distance from the origin, and returns an array of their x, y, z
         # positions
-
-        lights_number = randint(self.args.min_num_lights, self.args.max_num_lights)
+        
+        rule = self.rules.lights
+        lights_number = randint(rule["min_num"], rule["max_num"])
         pos = []
 
         for i in range(lights_number):
+            pitch = random.uniform(rule["min_pitch"], rule["max_pitch"])
+            yaw = random.uniform(rule["min_yaw"], rule["max_yaw"])
+            distance = random.uniform(rule["min_distance"], rule["max_distance"])
+
             pos.append([
-                self.args.lights_distance * sin(radians(randint(0, 360))) * self.args.lights_jitter,
-                self.args.lights_distance * cos(radians(randint(0, 360))) * self.args.lights_jitter,
-                self.args.lights_distance * (1 - sin(radians(randint(0, 180))) * self.args.lights_jitter)
+                distance * sin(radians(yaw)),
+                distance * cos(radians(yaw)),
+                distance * sin(radians(pitch))
             ])
+
+            pos[-1] = self.get_offset_position(pos[-1])
 
             #place light
             light_data = bpy.data.lights.new(name=f"Light_{i}_data", type='POINT')
-            light_data.energy = self.args.lights_intensity
+            light_data.energy = random.uniform(rule["min_intensity"], rule["max_intensity"])
+            light_data.shadow_soft_size = rule["radius"]
 
             light_object = bpy.data.objects.new(name=f"Light_{i}", object_data=light_data)
             bpy.context.collection.objects.link(light_object)
@@ -285,14 +302,31 @@ class DatasetRenderer:
                 color_rule = self.rules.colors[color]
                 self.create_material(mat_rule, color_rule)
 
+    def get_material_full_name(self, mat_name, col_name=None, degradation_level=None, degradation_color=None):
+        #Get the composite material name given its attributes
+        # Args:
+        # - mat_name: Base name of the material (eg: metal)
+        # - col_name: Name of the color (from color rules, eg: red)
+        # - degradation_level: Amount of degradation applied to the material (should not exceed 3 decimal places)
+        # - degradation_color: Color of the degradation
+
+        full_name = mat_name
+
+        if col_name is not None:
+            full_name += f"_{col_name}"
+        if degradation_level is not None:
+            assert degradation_color is not None , "Degradation color must be specified if material is degraded"
+            full_name += f"_DEGRAD:{round(degradation_level*1000)}_{degradation_color}"
+            
+        return full_name
 
     def create_material(self, mat_rule, col_rule):
         # Adds a new material to the scene
         # Args:
         # - mat_rule : Rule for the material
         # - col_rule : The color to be applied to the material.
-        
-        mat_name = f"{mat_rule['name']}_{col_rule['name']}"
+       
+        mat_name = self.get_material_full_name(mat_rule["name"], col_rule["name"])
         print("Creating composite material:", mat_name)
 
         bpy.data.materials.new(name=mat_name)
@@ -314,16 +348,37 @@ class DatasetRenderer:
             output_node.inputs["Surface"]
         )
 
+    def get_degraded_material(self, src_mat, degradation_level, degradation_color):
+        # Creates a degraded version of the source material, adds it to the scene and returns it
+        # If the material already exists, just return
+
+        new_mat_name = self.get_material_full_name(
+            src_mat.name, #Hacky but given the name already includes the color and color arg is left None it still works
+            degradation_level=degradation_level,
+            degradation_color=degradation_color
+        )
+        if new_mat_name in bpy.data.materials.keys():
+            return bpy.data.materials[new_mat_name]
+
+        mat = src_mat.copy()
+        mat.name = new_mat_name
+
+        group_node = mat.node_tree.nodes["Group"]
+        group_node.inputs["Degradation"].default_value = degradation_level
+        group_node.inputs["Degradation Color"].default_value = [*color_from_hex(degradation_color), 1] #RGB + Alpha
+
+        return mat
+
     def populate_scene(self):
         #Places a random number of objects and decoys in random places, adds their position to annotations
-
-        num_objects = randint(self.args.min_num_objects, self.args.max_num_objects) #random amount of objects
+        world_rule = self.rules.world
+        num_objects = randint(world_rule["min_num_objects"], world_rule["max_num_objects"]) #random amount of objects
         obj_index = self.state["shape_index"]
         self.place_shapes(obj_index, num_objects, decoys=False)
         self.state["shape_index"] += num_objects
 
         if len(self.rules["decoys"]) > 0: 
-            num_decoys = randint(self.args.min_num_decoys, self.args.max_num_decoys)
+            num_decoys = randint(world_rule["min_num_decoys"], world_rule["max_num_decoys"])
             decoy_index = self.state["shape_index"]
             self.place_shapes(decoy_index, num_decoys, decoys=True)
             self.state["shape_index"] += num_decoys
@@ -344,6 +399,14 @@ class DatasetRenderer:
             mat_rule = self.rules.materials[mat_name]
             col_rule = self.rules.colors[col_name]
 
+            degradation_level = None
+            degradation_color = None
+
+            if mat_rule is not None and mat_rule["degradation"] != "none":
+                degradation_level = randrange_float(mat_rule["degradation"]["min"], mat_rule["degradation"]["max"], mat_rule["degradation"]["step"]) 
+                degradation_color = mat_rule["degradation"]["color"]
+                if degradation_color == "auto":
+                    degradation_color = col_rule["hex"]
 
             object_annotations = {
                 "id" : obj_index,
@@ -356,7 +419,9 @@ class DatasetRenderer:
                 "material" : {
                     "id" : mat_rule["id"],
                     "name" : mat_rule["name"],
-                    "file" : mat_rule["file"]
+                    "file" : mat_rule["file"],
+                    "degradation" : degradation_level if degradation_level is not None else 0,
+                    "degradation_color" : degradation_color if degradation_color is not None else "none"
                 } if mat_rule is not None else None,
                 "color" : {
                     "id" : col_rule["id"],
@@ -391,28 +456,47 @@ class DatasetRenderer:
 
             #apply material and color
             if mat_rule is not None:
-                if col_rule is None:
-                    material_blender = bpy.data.materials[f"{mat_name}"]
-                else:
-                    material_blender = bpy.data.materials[f"{mat_name}_{col_name}"]
+                material_blender = bpy.data.materials[ #Get the material object without degradation
+                    self.get_material_full_name(mat_name, col_name=col_name)
+                ]
+                if degradation_level is not None:
+                    material_blender = self.get_degraded_material(material_blender, degradation_level, degradation_color)
                 
                 obj_blender.data.materials.append(material_blender)
 
-            #get annotations for training
-            if not decoys and self.args.create_bounding_boxes == 1:
-                #bbox
-                bbox = self.get_bounding_box(obj_blender)
+            if not decoys:
+                # Add annotations
                 category_id = obj_blender["inst_id"]
-
-                self.annotations["annotations"].append({
+                obj_annotations = {
                     "id" : obj_index,
                     "category_id" : category_id,
                     "iscrowd" : 0,
                     "image_id" : self.annotations["images"][-1]["id"],
-                    "bbox" : bbox
-                })
+                }
 
-            self.annotations["scenes"][-1][group].append(object_annotations)
+                if self.args.create_bounding_boxes:
+                    obj_annotations["bbox"] = self.get_bounding_box(obj_blender)
+
+                self.annotations["annotations"].append(obj_annotations)
+                self.annotations["scenes"][-1][group].append(object_annotations)
+
+            self.apply_transform(obj_blender)
+
+    def get_offset_position(self, pos):
+        offset_pos = [0, 0, 0]
+        cluster_pos = self.annotations["scenes"][-1]["cluster_position"]
+        offset_pos[0] = pos[0] + cluster_pos[0]
+        offset_pos[1] = pos[1] + cluster_pos[1]
+        offset_pos[2] = pos[2] + cluster_pos[2]
+        
+        return offset_pos
+
+    def get_ground(self, pos):
+        origin = mathutils.Vector((pos[0], pos[1], SCENE_MAX_Z))
+        dir = mathutils.Vector((0,0, -1))
+        gnd_location, gnd_normal = project_ray_world(origin, dir, SCENE_MAX_Z * 2)
+
+        return gnd_location, gnd_normal
 
     def apply_transform(self, obj, location=True, rotation=True, scale=True):
         bpy.context.view_layer.objects.active = obj
@@ -430,7 +514,7 @@ class DatasetRenderer:
                 return mat_name, None
         else:
             return None, None
-        
+    
     def add_shape(self, shape_dir, object_annotation):
         #add a shape to the scene
         name = object_annotation["shape"]["name"]
@@ -493,18 +577,11 @@ class DatasetRenderer:
             step=shape_rule["random_rotation"]["snap"][axis],
         )
         
-        if shape_rule["random_rotation"]["auto_snap_face"]:
-           #Add z rotation if needed
-            if shape_rule["random_rotation"]["snap"][2] != 0:
-                rotation[2] = get_random_angle(2)
+        for axis in range(3):
+            angle = get_random_angle(axis) if shape_rule["random_rotation"]["snap"][axis] > 0 else 0
+            rotation[axis] = angle
 
-        else:
-            for axis in range(3):
-                angle = get_random_angle(axis) if shape_rule["random_rotation"]["snap"][axis] > 0 else 0
-                rotation[axis] = angle
-
-        rotate(obj, rotation)
-        return rotation
+        return rotate(obj, rotation)
     
     def random_flip(self, flip_rule):
         #mirrors currently active object based on the flip settings it receives
@@ -533,14 +610,15 @@ class DatasetRenderer:
         rotation_radians = matrix.to_euler()
         rotation = [degrees(r) for r in rotation_radians]
 
-        rotate(obj, rotation)
-        return rotation
+        return rotate(obj, rotation)
 
     def try_shape_placement(self, obj, shape_rule, obj_annotations, max_attempts=50):
+        world_rule = self.rules.world
+        get_random_pos = lambda: random.uniform(-world_rule["cluster_size"] / 2, world_rule["cluster_size"] / 2)
         for attempt in range(max_attempts):
-            get_random_pos = lambda: random.uniform(self.args.padding - self.args.area_size / 2, self.args.area_size / 2 - self.args.padding)
             pos = [get_random_pos() for i in range(3)]
-            
+            pos = self.get_offset_position(pos)
+
             if shape_rule["snap_to_plane"] and not self.check_min_distance(pos, obj_annotations, ignore_z=True):
                 continue
             elif not self.check_min_distance(pos, obj_annotations):
@@ -548,34 +626,32 @@ class DatasetRenderer:
 
             rotation = [0, 0, 0]
             if shape_rule["snap_to_plane"] or shape_rule["random_rotation"]["auto_snap_face"]:
+                obj.location.z = SCENE_MAX_Z * 2
 
-                origin = mathutils.Vector((pos[0], pos[1], 1000))
-                dir = mathutils.Vector((0,0,-1))
-                gnd_location, gnd_normal = project_ray_world(origin, dir, 10000)
-                if gnd_location is None: 
-                    continue
+            gnd_location, gnd_normal = self.get_ground(pos) 
+            if gnd_location is None: 
+                continue
 
-                if shape_rule["random_rotation"]["auto_snap_face"]:
-                    rotation = self.snap_rotate(obj, gnd_normal, shape_rule)
-                else:
-                    rotation = self.random_rotate(obj, shape_rule)
-                
+            if shape_rule["random_rotation"]["auto_snap_face"]:
+                rotation = self.snap_rotate(obj, gnd_normal, shape_rule)
+            
+            rotation = rotate(obj, shape_rule["fixed_rotation"]) #Apply fixed rotation
+            rotation = self.random_rotate(obj, shape_rule) #Apply random rotation
 
-                if shape_rule["snap_to_plane"]:
-                    #move object so that the lowest point of the shape touches the ground
-                    self.apply_transform(obj)
-                    lowest_z = min([obj.matrix_world @ vert.co for vert in obj.data.vertices], key=lambda v: v.z).z
-                    pos[2] = gnd_location.z - lowest_z
 
-                obj.location = pos
-                self.apply_transform(obj)
-                return pos, rotation
-        
+            if shape_rule["snap_to_plane"]:
+                #move object so that the lowest point of the shape touches the ground
+                z_off = project_ray_world(obj.location, mathutils.Vector((0,0, -1)))[0].z - SCENE_MAX_Z * 2
+                pos[2] = gnd_location.z - z_off
+
+            obj.location = pos
+            return pos, rotation
+
         print(f"Unable to place shape {obj_annotations['id']} after {max_attempts} attempts, the shape will" + 
-              "be removed.\nThis warning is probably a result of too many shapes, too high 'min_distance' or a too" +
-              "low area size.\nIf this error pops up more than once you should probably modify those values.")
+            "be removed.\nThis warning is probably a result of too many shapes, too high 'min_distance' or a too" +
+            "low area size.\nIf this error pops up more than once you should probably modify those values.")
         return None, None
-    
+
     def check_min_distance(self, pos, obj_annotations, ignore_z = False):
         #returns true if the object respects the 'min_distance' rule from all the other shapes of the last scene
         for other_object in self.annotations["scenes"][-1]["objects"] + self.annotations["scenes"][-1]["decoys"]:

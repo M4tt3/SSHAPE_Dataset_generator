@@ -24,23 +24,24 @@ from typing import TypeAlias
 
 Identifier: TypeAlias = int | str
 
-def complete_rules(rules, defaults):
-    macros = rules.get("macros", None)
-    rules.pop("macros")
-    check_rule(rules["objects"] + rules["decoys"], defaults, "shape", macros)
-    check_rule(rules["materials"], defaults, "material", macros)
-    check_rule(rules["colors"], defaults, "color", macros)
+def check_rule(rules, defaults, rule_name, macros):
+    # Used to merge rules_defaults.json into the passed rules file
+    # For given list of rules it substitutes macros, adds default values,
+    # checks for required and unique values.
+    # If a dict is encountered inside a rule it is assumed to have 
+    # defaults values as well and the same checks are applied.
 
-def check_rule(rule, defaults, rule_name, macros):
     default = defaults[rule_name]
+
     #list of dicts, unique values already used
     in_use_uniques = []
 
-    for element in rule:
+    for element in rules:
         element_uniques = {} #stores unique values for this element
         for attribute in default.keys():
             value = element.get(attribute, None)
             default_value = default[attribute]
+            
             #Substitute macros
             if type(value) == str and value.startswith("$"):
                 macro_name = element[attribute][1:]
@@ -53,7 +54,8 @@ def check_rule(rule, defaults, rule_name, macros):
             if type(default_value) == str and default_value.split(";")[0] == "REQUIRED" and value is None:
                 raise RequiredAttributeNotFoundError(attribute, rule_name)
             
-            #Add dynamic default values
+            # Add dynamic default values
+            # Lambda functions preceded by '=' will be evaluated, the rule itself will be passed as an argument
             elif type(default_value) == str and default_value.startswith("=") and value is None:
                 str_func = default_value[1:]
                 if ";" in str_func:
@@ -64,7 +66,7 @@ def check_rule(rule, defaults, rule_name, macros):
             #Add static default values
             elif value is None:
                 element[attribute] = default_value
-            elif type(value) == dict:
+            elif type(value) == dict: # In this case default values for the subrule are applied
                 check_rule([element[attribute]], defaults, attribute, macros)
 
             #If value is unique add it to 'element_uniques'
@@ -79,7 +81,6 @@ def check_rule(rule, defaults, rule_name, macros):
             for in_use in in_use_uniques:
                 if element_uniques[unique_attr] == in_use[unique_attr]:
                     raise DuplicateValueError(unique_attr, rule_name)
-                
  
 class Rules:
     def __init__(self, rules):
@@ -88,13 +89,21 @@ class Rules:
         with open("./configs/rules_defaults.json", "r") as f:
             defaults = json.load(f)
 
-        self.objects = RulesSection(rules, "objects", defaults)
-        self.decoys = RulesSection(rules, "decoys", defaults)
-        self.colors = RulesSection(rules, "colors", defaults)
-        self.materials = RulesSection(rules, "materials", defaults)
+        # List structured rules
+        self.objects = RulesSectionArray(rules, "objects", defaults)
+        self.decoys = RulesSectionArray(rules, "decoys", defaults)
+        self.colors = RulesSectionArray(rules, "colors", defaults)
+        self.materials = RulesSectionArray(rules, "materials", defaults)
 
-        self.categories =  defaults["categories"]
-        self.categories.update(rules.get("categories", {}))
+        # Dict structured rules
+        self.categories = rules.get("categories", {})
+        self.camera = rules.get("camera", {})
+        self.lights = rules.get("lights", {})
+        self.world = rules.get("world", {})
+        check_rule([self.categories], defaults, "categories", rules.get("macros", {}))
+        check_rule([self.camera], defaults, "camera", rules.get("macros", {}))
+        check_rule([self.lights], defaults, "lights", rules.get("macros", {}))
+        check_rule([self.world], defaults, "world", rules.get("macros", {}))
 
     def get_dict(self):
         return {
@@ -102,7 +111,10 @@ class Rules:
             "decoys" : list(self.decoys),
             "colors" : list(self.colors),
             "materials" : list(self.materials),
-            "categories" : dict(self.categories)
+            "categories" : self.categories,
+            "camera" : self.camera,
+            "lights" : self.lights,
+            "world" : self.world
         }
 
     def __getitem__(self, id: str):
@@ -180,7 +192,7 @@ class Rules:
         else:
             return allowed_materials
 
-class RulesSection:
+class RulesSectionArray:
     def __init__(self, rules, section_name, defaults):
         self.name__ = section_name
         self.section__ = rules.get(section_name, [])
@@ -249,61 +261,3 @@ class RulesSection:
             val_list.append(rule[attribute])
 
         return val_list
-
-def complete_rules(rules: Rules, defaults: dict):
-    macros = rules.get("macros", {})
-    rules.pop("macros")
-    check_rule(rules["objects"] + rules["decoys"], defaults, "shape", macros)
-    check_rule(rules["materials"], defaults, "material", macros)
-    check_rule(rules["colors"], defaults, "color", macros)
-
-def check_rule(rule: dict, defaults: dict, rule_name: str, macros: dict):
-    default = defaults[rule_name]
-    #list of dicts, unique values already used.
-    in_use_uniques = []
-
-    for element in rule:
-        element_uniques = {} #stores unique values for this element
-        for attribute in default.keys():
-            value = element.get(attribute, None)
-            default_value = default[attribute]
-            #Substitute macros
-            if type(value) == str and value.startswith("$"):
-                macro_name = element[attribute][1:]
-                if macros is not None and macros.get(macro_name, None) is not None:
-                    element[attribute] = macros[macro_name]
-                else:
-                    raise UndefinedMacroError(macro_name)
-
-            #Check for required values
-            if type(default_value) == str and default_value.split(";")[0] == "REQUIRED" and value is None:
-                raise RequiredAttributeNotFoundError(attribute, rule_name)
-            
-            #Add dynamic default values
-            elif type(default_value) == str and default_value.startswith("=") and value is None:
-                str_func = default_value[1:]
-                if ";" in str_func:
-                    str_func = str_func.split(";")[0]
-                func = eval(str_func)
-                element[attribute] = func(element)
-
-            #Add static default values
-            elif value is None:
-                element[attribute] = default_value
-            elif type(value) == dict:
-                check_rule([element[attribute]], defaults, attribute, macros)
-
-            #If value is unique add it to 'element_uniques'
-            try:
-                if default_value.split(";")[1] == "UNIQUE":
-                    element_uniques[attribute] = element[attribute]
-            except IndexError: pass #In case of no ';', which would trigger an index out of bounds exception
-            except AttributeError: pass #In case of the value not being a string
-
-        #Check if unique values used are duplicate
-        for unique_attr in element_uniques.keys():
-            for in_use in in_use_uniques:
-                if element_uniques[unique_attr] == in_use[unique_attr]:
-                    raise DuplicateValueError(unique_attr, rule_name)
-                
-        in_use_uniques.append(element_uniques)

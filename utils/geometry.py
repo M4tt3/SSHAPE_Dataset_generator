@@ -1,14 +1,52 @@
+"""
+Copyright 2024-present, Matteo Bicchi
+All rights reserved
+
+
+This file is part of SSHAPE_Dataset_generator.
+
+SSHAPE_Dataset_generator is free software: you can redistribute it and/or modify it under the terms of the 
+GNU General Public License as published by the Free Software Foundation, either version 3 of the 
+License, or any later version.
+
+SSHAPE_Dataset_generator is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without 
+even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General 
+Public License for more details.
+
+You should have received a copy of the GNU General Public License along with SSHAPE_Dataset_generator. 
+If not, see <https://www.gnu.org/licenses/>.
+"""
+
 from SSHAPE_Dataset_generator.utils import *
 import random
-from math import radians
+from math import radians, degrees
 from mathutils import Vector, Matrix, Euler #type:ignore
 import numpy as np
 import bpy
 from icecream import ic
 
 def rotate(obj, angle):
+    # rotates blender object, rotation is relativeand expressed in degrees
+    # returns object orientation after rotation
+    orientation = obj.rotation_euler
+    orientation[0] += radians(angle[0])
+    orientation[1] += radians(angle[1])
+    orientation[2] += radians(angle[2])
+    set_orienation(obj, orientation)
+
+    return (
+        degrees(orientation[0]),
+        degrees(orientation[1]),
+        degrees(orientation[2])
+    )
+
+def set_orienation(obj, angle):
     #rotates blender object, rotation is absolute and expressed in degrees
-    obj.rotation_euler = (radians(angle[0]), radians(angle[1]), radians(angle[2]))
+    obj.rotation_euler = (
+        radians(angle[0]),
+        radians(angle[1]),
+        radians(angle[2])
+    )
     
 def randrange_float(min, max, step):
     #similar to random.randrange() but works with floating point values
