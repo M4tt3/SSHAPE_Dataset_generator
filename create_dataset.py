@@ -17,6 +17,14 @@ You should have received a copy of the GNU General Public License along with SSH
 If not, see <https://www.gnu.org/licenses/>.
 """
 
+# -------------------------------------------
+import sys
+import os
+
+# Add project root (one level above SSHAPE_Dataset_generator)
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+# -------------------------------------------
+
 from SSHAPE_Dataset_generator.utils.arguments import *
 from SSHAPE_Dataset_generator.render import DatasetRenderer
 from SSHAPE_Dataset_generator.utils.rules import Rules

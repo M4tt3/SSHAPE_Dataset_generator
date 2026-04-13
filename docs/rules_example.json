@@ -86,12 +86,12 @@
             "id" : 2,
             "name" : "metal",
             "file" : "metal.blend",
-            "allowed_colors" : "all",
+            "allowed_colors" : ["green", "yellow"],
             "degradation" : {
-                "file" : "degrade_metal.blend",
-                "min" : 0,
-                "max" : 0.24,
-                "step" : 0.8
+                "color" : "grey",
+                "min" : 0.4,
+                "max" : 0.8,
+                "step" : 0.2
             }
         }
 
@@ -159,6 +159,13 @@
             "hex" : "#5e2b80",
             "opacity" : 1,
             "emission" : "#5e2b80"
+        },
+        {
+            "name" : "grey",
+            "id" : 9,
+            "hex" : "#333333",
+            "opacity" : 1,
+            "emission" : "#000000"
         }
     ]
 }

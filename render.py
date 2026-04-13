@@ -69,7 +69,6 @@ class DatasetRenderer:
                 "shape_index" : 0
             }
 
-
         #INITIALIZE SCENE
         scene = bpy.context.scene
                      
@@ -85,19 +84,40 @@ class DatasetRenderer:
         self.load_materials()
         self.create_directory_tree()
 
+        self.set_render_settings()
+
+    def set_render_settings(self):
         # Set image resolution
         render_args = bpy.context.scene.render
-        render_args.resolution_x = args.images_width
-        render_args.resolution_y = args.images_height
+        render_args.resolution_x = self.args.images_width
+        render_args.resolution_y = self.args.images_height
+
+        # Enable depth and segmentation passes
+        view_layer = bpy.context.view_layer
+        view_layer.use_pass_z = self.args.create_depth == 1                     # depth
+        view_layer.use_pass_object_index = self.args.create_segmentations == 1  # segmentation
+
+        scene = bpy.context.scene
+        tree = scene.compositing_node_group
+
+        if self.args.create_depth == 1:
+            tree.nodes["Depth Output"].directory = self.depth_path
+        if self.args.create_segmentations == 1:
+            tree.nodes["Segmentation Output"].directory = self.seg_path
+        
 
     def create_directory_tree(self):
         #setup output directory tree
         os.makedirs(self.args.output_dir, exist_ok=True)
         os.makedirs(os.path.join(self.args.output_dir, self.args.split), exist_ok=True)
         os.makedirs(os.path.join(self.args.output_dir, self.args.split, "images"), exist_ok=True)
+        self.images_path = os.path.join(self.args.output_dir, self.args.split, "images")
         if self.args.create_segmentations == 1:
             os.makedirs(os.path.join(self.args.output_dir, self.args.split, "segmentation"), exist_ok=True)
+            self.seg_path = os.path.join(self.args.output_dir, self.args.split, "segmentation")
+        if self.args.create_depth == 1:
             os.makedirs(os.path.join(self.args.output_dir, self.args.split, "depth"), exist_ok=True)
+            self.depth_path = os.path.join(self.args.output_dir, self.args.split, "depth")
 
     def save_annotations(self):
         prefix = self.args.filename_prefix
@@ -154,28 +174,22 @@ class DatasetRenderer:
 
             self.populate_scene()
 
-            render_args = bpy.context.scene.render #set path for rendering
-            render_args.filepath = os.path.abspath(
-                os.path.join(args.output_dir, args.split, "images", img_filename)
-            )
+            # set RGB path
+            blender_scene = bpy.context.scene
+            blender_scene.render.filepath = os.path.join(self.images_path, img_filename)
+
+            # update node filenames
+            name_no_ext = os.path.splitext(img_filename)[0]
+
+            for node in blender_scene.compositing_node_group.nodes:
+                if node.label == "Depth Output":
+                    node.file_name = name_no_ext
+                if node.label == "Segmentation Output":
+                    node.file_name = name_no_ext
 
             if not args.test_mode:
-                while True:
-                    try:
-                        bpy.ops.render.render(write_still=True)
-                        if args.create_segmentations == 1 or args.create_depth == 1:
-                            gnd_truth = bpycv.render_data(render_image=False)
-                            if args.create_segmentations == 1:
-                                segmentation_path = os.path.join(args.output_dir, args.split, "segmentation", img_filename)
-                                cv2.imwrite(segmentation_path, np.uint8(gnd_truth["inst"]))
-                            if args.create_depth == 1:
-                                depth_path = os.path.join(args.output_dir, args.split, "depth", img_filename)
-                                cv2.imwrite(depth_path, np.uint16(gnd_truth["depth"] * 1000)) #save depth in mm
-
-                        break
-                    except Exception as e:
-                        print(e)
-                        
+                # render
+                bpy.ops.render.render(write_still=True)
                 self.clear_scene()
 
         self.save_annotations()
@@ -410,6 +424,7 @@ class DatasetRenderer:
 
             object_annotations = {
                 "id" : obj_index,
+                "segmentation_id" : obj_index - start_index,
                 "shape" : {
                     "id" : shape_rule["id"],
                     "name" : shape_rule["name"],
@@ -539,6 +554,7 @@ class DatasetRenderer:
                 )
             )
             blender_obj["inst_id"] = cat_id
+            blender_obj.pass_index = object_annotation['segmentation_id']
         except ValueError:
             pass
 
@@ -634,14 +650,14 @@ class DatasetRenderer:
 
             if shape_rule["random_rotation"]["auto_snap_face"]:
                 rotation = self.snap_rotate(obj, gnd_normal, shape_rule)
-            
+
             rotation = rotate(obj, shape_rule["fixed_rotation"]) #Apply fixed rotation
             rotation = self.random_rotate(obj, shape_rule) #Apply random rotation
 
-
             if shape_rule["snap_to_plane"]:
                 #move object so that the lowest point of the shape touches the ground
-                z_off = project_ray_world(obj.location, mathutils.Vector((0,0, -1)))[0].z - SCENE_MAX_Z * 2
+                #z_off = project_ray_world(obj.location, mathutils.Vector((0,0, -1)))[0].z - SCENE_MAX_Z * 2
+                z_off = -0.01
                 pos[2] = gnd_location.z - z_off
 
             obj.location = pos

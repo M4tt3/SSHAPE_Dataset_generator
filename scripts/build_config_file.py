@@ -25,6 +25,13 @@ Can be followed by arguments for 'create_dataset.py' to save them,
 otherwise default values will be used.
 
 """
+# -------------------------------------------
+import sys
+import os
+
+# Add project root (one level above SSHAPE_Dataset_generator)
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+# -------------------------------------------
 
 from SSHAPE_Dataset_generator.utils.arguments import setup_argparser, extract_args
 import sys, json
