@@ -97,14 +97,22 @@ class DatasetRenderer:
         view_layer.use_pass_z = self.args.create_depth == 1                     # depth
         view_layer.use_pass_object_index = self.args.create_segmentations == 1  # segmentation
 
+        if self.args.create_depth == 1:
+            node = self.get_depth_out_node()
+            node.directory = self.depth_path
+        if self.args.create_segmentations == 1:
+            node = self.get_segmentation_out_node()
+            node.directory = self.seg_path
+
+    def get_depth_out_node(self):
         scene = bpy.context.scene
         tree = scene.compositing_node_group
-
-        if self.args.create_depth == 1:
-            tree.nodes["Depth Output"].directory = self.depth_path
-        if self.args.create_segmentations == 1:
-            tree.nodes["Segmentation Output"].directory = self.seg_path
-        
+        return tree.nodes["Depth Output"]
+    
+    def get_segmentation_out_node(self):
+        scene = bpy.context.scene
+        tree = scene.compositing_node_group
+        return tree.nodes["Segmentation Output"]
 
     def create_directory_tree(self):
         #setup output directory tree
@@ -136,12 +144,12 @@ class DatasetRenderer:
             self.state["img_index"] = img_index
             if not self.run: break
             prefix = args.filename_prefix #prefix for files
-            img_filename = f"{prefix + '_' if prefix is not None else ''}{img_index:010d}.png" #TODO: add support for other file formats
+            img_name_no_ext = f"{prefix + '_' if prefix is not None else ''}{img_index:010d}"
 
             #image metadata
             image_info = {
                 "id" : img_index,
-                "file_name" : img_filename,
+                "file_name" : img_name_no_ext,
                 "height" : args.images_height,
                 "width" : args.images_width,
                 "date_captured" : datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -176,16 +184,13 @@ class DatasetRenderer:
 
             # set RGB path
             blender_scene = bpy.context.scene
-            blender_scene.render.filepath = os.path.join(self.images_path, img_filename)
+            blender_scene.render.filepath = os.path.join(self.images_path, img_name_no_ext + ".png")
 
             # update node filenames
-            name_no_ext = os.path.splitext(img_filename)[0]
-
-            for node in blender_scene.compositing_node_group.nodes:
-                if node.label == "Depth Output":
-                    node.file_name = name_no_ext
-                if node.label == "Segmentation Output":
-                    node.file_name = name_no_ext
+            if self.args.create_depth == 1:
+                self.get_depth_out_node().file_name = img_name_no_ext + ".exr"
+            if self.args.create_segmentations == 1:
+                self.get_segmentation_out_node().file_name = img_name_no_ext + ".exr"
 
             if not args.test_mode:
                 # render
@@ -424,7 +429,7 @@ class DatasetRenderer:
 
             object_annotations = {
                 "id" : obj_index,
-                "segmentation_id" : obj_index - start_index,
+                "segmentation_id" : obj_index - start_index + 1, #segmentation id starts from 1 for each scene, 0 is reserved for background
                 "shape" : {
                     "id" : shape_rule["id"],
                     "name" : shape_rule["name"],
@@ -478,6 +483,8 @@ class DatasetRenderer:
                     material_blender = self.get_degraded_material(material_blender, degradation_level, degradation_color)
                 
                 obj_blender.data.materials.append(material_blender)
+            
+            self.apply_transform(obj_blender)
 
             if not decoys:
                 # Add annotations
@@ -495,7 +502,6 @@ class DatasetRenderer:
                 self.annotations["annotations"].append(obj_annotations)
                 self.annotations["scenes"][-1][group].append(object_annotations)
 
-            self.apply_transform(obj_blender)
 
     def get_offset_position(self, pos):
         offset_pos = [0, 0, 0]
@@ -516,6 +522,7 @@ class DatasetRenderer:
     def apply_transform(self, obj, location=True, rotation=True, scale=True):
         bpy.context.view_layer.objects.active = obj
         bpy.ops.object.transform_apply(location=location, rotation=rotation, scale=scale)
+        bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
 
     def choose_random_appearance(self, shape_rule):
         # Returns random material and color rules
@@ -654,11 +661,13 @@ class DatasetRenderer:
             rotation = rotate(obj, shape_rule["fixed_rotation"]) #Apply fixed rotation
             rotation = self.random_rotate(obj, shape_rule) #Apply random rotation
 
+            z_off = shape_rule["z_offset"]
+
             if shape_rule["snap_to_plane"]:
                 #move object so that the lowest point of the shape touches the ground
-                #z_off = project_ray_world(obj.location, mathutils.Vector((0,0, -1)))[0].z - SCENE_MAX_Z * 2
-                z_off = -0.01
-                pos[2] = gnd_location.z - z_off
+                z_off -= project_ray_world(obj.location, mathutils.Vector((0,0, -1)))[0].z - SCENE_MAX_Z * 2
+            
+            pos[2] = gnd_location.z + z_off
 
             obj.location = pos
             return pos, rotation
@@ -689,37 +698,44 @@ class DatasetRenderer:
         return True
     
     def get_bounding_box(self, object):
-        corners_locations = [vert.co for vert in object.data.vertices]
-        lowest_values = [None , None]
-        highest_values = [None, None]
-        for corner in corners_locations:
-            #get position of corner in 2d camera view
-            c_2d = bpy_extras.object_utils.world_to_camera_view(bpy.context.scene, self.camera_obj, corner + object.location)
-            #transform to pixel coordinates
-            render = bpy.context.scene.render
-            c_2d = [
-                round(c_2d.x * render.resolution_x),
-                self.args.images_height - round(c_2d.y * render.resolution_y) #for some reason y is flipped
-            ]
+        scene = bpy.context.scene
+        render = scene.render
 
-            if lowest_values[0] is None: #if no value has been assigned yet
-                lowest_values = c_2d.copy()
-                highest_values = c_2d.copy()
-                continue
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        object_eval = object.evaluated_get(depsgraph)
 
-            if lowest_values[0] > c_2d[0]:
-                lowest_values[0] = c_2d[0]
-            elif highest_values[0] < c_2d[0]:
-                highest_values[0] = c_2d[0]
+        corners = [object_eval.matrix_world @ Vector(corner) for corner in object_eval.bound_box]
 
-            if lowest_values[1] > c_2d[1]:
-                lowest_values[1] = c_2d[1]
-            elif highest_values[1] < c_2d[1]:
-                highest_values[1] = c_2d[1]
+        coords_2d = []
+
+        scale = render.resolution_percentage / 100.0
+        W = int(render.resolution_x * scale)
+        H = int(render.resolution_y * scale)
+
+        for corner in corners:
+
+            c_2d = bpy_extras.object_utils.world_to_camera_view(
+                scene,
+                self.camera_obj,
+                corner
+            )
+
+            x = int(c_2d.x * W)
+            y = int((1.0 - c_2d.y) * H)  # FLIP Y FOR OPENCV
+
+            coords_2d.append((x, y))
+
+        xs = [c[0] for c in coords_2d]
+        ys = [c[1] for c in coords_2d]
+
+        x_min = max(min(xs), 0)
+        y_min = max(min(ys), 0)
+        x_max = min(max(xs), W)
+        y_max = min(max(ys), H)
 
         return [
-            lowest_values[0],
-            lowest_values[1],
-            highest_values[0] - lowest_values[0],
-            highest_values[1] - lowest_values[1]
+            x_min,
+            y_min,
+            x_max - x_min,
+            y_max - y_min
         ]

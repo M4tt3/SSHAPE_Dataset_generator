@@ -53,6 +53,7 @@ if __name__ == "__main__":
 
     if args.resume is not None:
         with open(args.resume, "r") as f:
+            print(f"Resuming from checkpoint {args.resume}")
             checkpoint = json.load(f)
             parser.set_defaults(**checkpoint["args"])
             args = parser.parse_args([])

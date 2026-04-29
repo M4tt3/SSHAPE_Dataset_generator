@@ -46,7 +46,8 @@
         "random_rotation" : "none",
         "fixed_rotation" : [0, 0, 0],
         "flip" : "none",
-        "snap_to_plane" : false
+        "snap_to_plane" : false,
+        "z_offset" : 0
     },
     "decoys": {
         "id" : "REQUIRED;UNIQUE",
