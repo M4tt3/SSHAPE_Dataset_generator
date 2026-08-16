@@ -1,0 +1,23 @@
+{
+    "output_dir": "../output/",
+    "filename_prefix": null,
+    "split": "val",
+    "start_index" : 0,
+    "num_images": 50,
+    "images_width": 640,
+    "images_height": 640,
+    "use_gpu": 1,
+    "create_segmentations": 1,
+    "create_depth": 1,
+    "create_bounding_boxes": 0,
+    "materials_dir": "./materials",
+    "objects_dir": "./models",
+    "rules": "./rules.json",
+    "decoys_dir": "./",
+    "base_scene": "./base_scenes/mars_2.blend",
+    "resume": null,
+    "test_mode": 1,
+    "use_devices": "all",
+    "use_multiple_gpus": 0,
+    "gpu_groups": null
+}

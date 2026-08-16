@@ -36,6 +36,10 @@ import signal
 
 sys.stdout = sys.stderr
 
+# Captured before chdir below so relative paths in args/config can be resolved against
+# the directory the script was actually invoked from, not the repo's own directory.
+ORIGINAL_CWD = os.getcwd()
+
 PATH = pathlib.Path(__file__).parent.resolve()
 os.chdir(PATH)
 print(f"Working directory is set to {PATH}")
@@ -51,18 +55,37 @@ if __name__ == "__main__":
     checkpoint = None
     rules = None
 
-    if args.resume is not None:
-        with open(args.resume, "r") as f:
-            print(f"Resuming from checkpoint {args.resume}")
+    # --resume and --config are always given on the command line, so they're resolved
+    # against the invocation cwd, independently of whether a config file is used. These
+    # are kept in local variables rather than written back onto 'args' because parsing
+    # argv again below (to apply config-file defaults) would otherwise overwrite them
+    # with their original, unresolved command-line value.
+    resume_path = resolve_path(args.resume, ORIGINAL_CWD)
+    config_path = resolve_path(args.config, ORIGINAL_CWD)
+
+    if resume_path is not None:
+        with open(resume_path, "r") as f:
+            print(f"Resuming from checkpoint {resume_path}")
             checkpoint = json.load(f)
             parser.set_defaults(**checkpoint["args"])
             args = parser.parse_args([])
             rules = Rules(checkpoint["rules"])
-    elif args.config is not None:
+        # Paths saved in a checkpoint were already resolved to absolute paths when it was
+        # written; resolving again is a no-op for them but keeps hand-edited checkpoints safe.
+        resolve_args_paths(args, ORIGINAL_CWD)
+    elif config_path is not None:
         #override default values of parser with arguments from configuration file
-        with open(args.config, "r") as f:
+        with open(config_path, "r") as f:
             parser.set_defaults(**json.load(f))
             args = parser.parse_args(argv)
+        args.config = config_path
+        # Relative paths coming from the config file (or overridden on the command line
+        # alongside it) resolve against the config file's own directory.
+        resolve_args_paths(args, os.path.dirname(config_path))
+    else:
+        # No config, no checkpoint: relative paths resolve against the invocation cwd.
+        resolve_args_paths(args, ORIGINAL_CWD)
+
     if rules is None:
         with open(args.rules, "r") as f:
             rules = Rules(json.load(f))

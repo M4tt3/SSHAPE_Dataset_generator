@@ -4,5 +4,5 @@ data/
 __pycache__/
 test/
 *.png
-output/
 dataset/
+examples/output/
