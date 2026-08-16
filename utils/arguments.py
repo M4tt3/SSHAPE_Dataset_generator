@@ -17,13 +17,19 @@ You should have received a copy of the GNU General Public License along with SSH
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import argparse, sys, random
+import argparse, sys, random, pathlib
 from SSHAPE_Dataset_generator.utils.errors import *
 from math import radians
 import mathutils #type:ignore
 from mathutils import Vector, Matrix, Euler #type:ignore
 import numpy as np
 from icecream import ic
+
+# Argparse attributes that hold filesystem paths and therefore need base-dir resolution.
+# NOTE: 'config' and 'resume' are deliberately excluded: they are always supplied on the
+# command line, so they're resolved separately against the invocation cwd before this list
+# is used (see create_dataset.py).
+PATH_ARG_NAMES = ("output_dir", "materials_dir", "objects_dir", "decoys_dir", "rules", "base_scene")
 
 def setup_argparser():
     ap = argparse.ArgumentParser()
@@ -44,9 +50,6 @@ def setup_argparser():
                     help="Whether or not to use gpu fo rendering (1 for yes, 0 for no).")
     #ap.add_argument("--image_format", default="jpg",
     #                help="Saving format for images, must be supported bu OpenCV")
-    ap.add_argument("--min_pixels_per_object", default=200, type=int,
-                    help="Minimum pixels visible for every object, if this condition is not met the " +
-                    "scene is discarded and recreated.")
     ap.add_argument("--create_segmentations", default=1, type=int,
                     help="Whether or not to create segmentation ground truth data (1 for yes, 0 for no).")
     ap.add_argument("--create_depth", default=1, type=int,
@@ -69,43 +72,8 @@ def setup_argparser():
                     help="Path of the checkpoint file to resume a paused rendering.")
     ap.add_argument("--config", default=None,
                     help="Config file (JSON) to use instead of command line arguments")
-    # --------------- SETTINGS ---------------
-    #ap.add_argument("--area_size", default=3, type=int,
-    #                help="Size of the working area.")
-    #ap.add_argument("--min_num_objects", default=2, type=int,
-    #                help="Minimum number of objects in every scene.")
-    #ap.add_argument("--max_num_objects", default=6, type=int,
-    #                help="Maximum number of objects in every scene.")
-    #ap.add_argument("--min_num_decoys", default=0, type=int,
-    #                help="Minimum number of decoys in every scene.")
-    #ap.add_argument("--max_num_decoys", default=2, type=int,
-    #                help="Maximum number of decoys in every scene.")
-    #ap.add_argument("--min_num_lights", default=1, type=int,
-    #                help="Minimum number of decoys in every scene.")
-    #ap.add_argument("--max_num_lights", default=3, type=int,
-    #                help="Maximum number of lights in every scene.")
-    #ap.add_argument("--camera_distance", default=2.5, type=float,
-    #                help="Distance between the camera and the origin.")
-    #ap.add_argument("--min_camera_pitch", default=30, type=int,
-    #                help="Minimum angle (in degrees) of rotation  of the camera along the y axis.")
-    #ap.add_argument("--max_camera_pitch", default=80, type=int,
-    #                help="Maximum angle (in degrees) of rotation  of the camera along the y axis.")
-    #ap.add_argument("--min_camera_yaw", default=0, type=int,
-    #                help="Minimum angle (in degrees) of rotation  of the camera along the z axis.")
-    #ap.add_argument("--max_camera_yaw", default=0, type=int,
-    #                help="Maximum angle (in degrees) of rotation  of the camera along the z axis.")
-    #ap.add_argument("--padding", default=0.6, type=float,
-    #                help="Minimum distance between the center projection on the base plane of every "+
-    #                     "object and the plane boundaries.")
-    #ap.add_argument("--lights_jitter", default=0.4, type=float,
-    #                help="Max amount of random movement from the default position of each light.")
-    #ap.add_argument("--lights_distance", default=3, type=float,
-    #                help="Distance at which the lights are placed.")
-    #ap.add_argument("--lights_intensity", default=60, type=float,
-    #                help="Intensity of lights.")
     ap.add_argument("--test_mode", default=0, type=int,
                     help="Sets testing mode (1 for yes, 0 for no), see docs 'Testing mode'.")
-    #ap.add_argument("--start_index", default=0, type=int)
     
     # --------------- RENDERING OPTIONS ---------------
 
@@ -136,6 +104,36 @@ def extract_args(input_argv=None):
         idx = input_argv.index('--')
         output_argv = input_argv[(idx + 1):]
     return output_argv
+
+def resolve_path(path, base_dir):
+    """
+    Resolves 'path' into an absolute path.
+    Args:
+    - path: A path, either absolute or relative. None/empty values are returned unchanged
+      (used for optional path arguments such as 'base_scene' or 'resume').
+    - base_dir: Directory an already-relative 'path' is resolved against. Ignored if
+      'path' is already absolute.
+    """
+    if not path:
+        return path
+
+    p = pathlib.Path(path)
+    if p.is_absolute():
+        return str(p)
+
+    return str((pathlib.Path(base_dir) / p).resolve())
+
+def resolve_args_paths(args, base_dir):
+    """
+    Resolves every path-valued attribute in 'args' (see PATH_ARG_NAMES) in place, relative
+    to 'base_dir'. Use the invocation's current working directory as 'base_dir' when no
+    config file is used, or the config file's containing directory when one is used, so
+    that relative paths written inside a config file are resolved relative to that file
+    rather than to whatever the process's cwd happens to be.
+    """
+    for name in PATH_ARG_NAMES:
+        setattr(args, name, resolve_path(getattr(args, name, None), base_dir))
+    return args
 
 def change_args(args, **kwargs):
     for (arg_name, new_value) in kwargs.items():

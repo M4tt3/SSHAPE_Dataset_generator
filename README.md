@@ -14,16 +14,8 @@ If you like the project **sharing** it could be really helpful.
 To run this script you must have [Blender](https://www.blender.org/) installed on your system.
 
 #### Compatibility:
-Development was done on **Blender 4.4** running on Ubunutu **22.04**.
-The package should be compatible with previous Blender versions until **3.0** (not tested) and should also work on **Windows** (could need minor adjustments for the installation instructions).
-
-### Navigate to the packages directory of embedded python
-
-Run the following script in a terminal.
-
-    cd {BLENDER}/{BLENDER VERSION}/python/lib/python3.11
-
-Replace **{BLENDER}** in with your blender installation directory, and **{BLENDER VERSION}** with your blender version, which you can get by running `blender --version`.
+Development was done on **Blender 5.1** running on **Windows 11**.
+The package should be compatible with previous Blender versions until **3.0** (not tested) and should also work on **Ubuntu** (could need minor adjustments for the installation instructions).
 
 ### Clone the github repo
 Dowload SSHAPE_Dataset_generator by running the following command.
@@ -32,19 +24,30 @@ Dowload SSHAPE_Dataset_generator by running the following command.
 
 <h2><li> Install dependencies </h2>
 
-Blender has its own binaries for python located at the following path:
+Blender has its own binaries for python, by default in windows the path is:
 
-    cd {BLENDER}/{BLENDER VERSION}/python/bin
+    C:\Program Files\Blender Foundation\Blender 5.1\5.1\python\bin\python3.exe
 
-Then using the executables in that directory install pip and dependencies:
+Using the executables in that directory install pip and dependencies:
 
-    ./python3.11 -m enurepip
-    ./python3.11 -m pip install -U pip setuptools wheel bpycv icecream tqdm
+    ./python3.exe -m enurepip
+    ./python3.exe -m pip install -U pip setuptools wheel bpycv icecream tqdm
 
 ### Check installation
 Once the installation is done you can check that bpycv was correctly installed by running:
 
     blender -b -E CYCLES --python-expr "import bpycv,cv2;d=bpycv.render_data();bpycv.tree(d);cv2.imwrite('/tmp/try_bpycv_vis(inst-rgb-depth).jpg', d.vis()[...,::-1])"
+
+<h2><li> Run the example </h2>
+
+You can use the configurations in the `examples` folder, such as:
+
+    blender --python create_dataset.py -- --config .\examples\probes_dataset\assets\config.json
+
+By default this configuration is set to `test_mode` which means you can run it and check out how objects are disposed in the scene by simply navigating the blender scene.
+To create the dataset disable test mode in the config file and run in background mode:
+
+    blender --background --python create_dataset.py -- --config .\examples\probes_dataset\assets\config.json
 
 <h2><li> Setup rules </h2>
 

@@ -29,23 +29,24 @@ def rotate(obj, angle):
     # rotates blender object, rotation is relativeand expressed in degrees
     # returns object orientation after rotation
     orientation = obj.rotation_euler
-    orientation[0] += radians(angle[0])
-    orientation[1] += radians(angle[1])
-    orientation[2] += radians(angle[2])
+    orientation[0] += angle[0]
+    orientation[1] += angle[1]
+    orientation[2] += angle[2]
     set_orienation(obj, orientation)
 
     return (
-        degrees(orientation[0]),
-        degrees(orientation[1]),
-        degrees(orientation[2])
+        orientation[0],
+        orientation[1],
+        orientation[2]
     )
 
 def set_orienation(obj, angle):
     #rotates blender object, rotation is absolute and expressed in degrees
-    obj.rotation_euler = (
-        radians(angle[0]),
+    obj.rotation_euler = Euler(
+        (radians(angle[0]),
         radians(angle[1]),
-        radians(angle[2])
+        radians(angle[2])),
+        "XYZ"
     )
     
 def randrange_float(min, max, step):

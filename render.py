@@ -30,6 +30,8 @@ import random
 from SSHAPE_Dataset_generator.utils.errors import *
 from SSHAPE_Dataset_generator.utils.geometry import *
 from SSHAPE_Dataset_generator.utils.categories import create_categories_list, get_category_name
+from SSHAPE_Dataset_generator.utils.asset_library import BlendAssetLibrary, ensure_linked
+from SSHAPE_Dataset_generator.utils.scene_object import SceneObject
 from icecream import ic
 import numpy as np
 
@@ -37,7 +39,6 @@ import numpy as np
 import bpy, bpy_extras, mathutils #type: ignore
 from bpy import context #type: ignore
 from mathutils import Vector, Color #type: ignore
-import bpycv, cv2
 
 #Shapes with random_rotation.snap set to auto will have the normal of a random face aligned with this vector
 #NOTE: Right now changing this vector is not properly supported
@@ -69,9 +70,18 @@ class DatasetRenderer:
                 "shape_index" : 0
             }
 
+        print("Created categories list: {}".format(self.annotations["categories"]))
 
         #INITIALIZE SCENE
         scene = bpy.context.scene
+
+        # Asset loading and pooling (performance critical)
+        self._asset_lib = BlendAssetLibrary(link=False)
+        self._shape_templates = {}  # (shape_dir, blend_file, object_name) -> bpy.types.Object
+        self._shape_pools = {}      # (shape_dir, blend_file, object_name) -> list[SceneObject]
+        self._active_pooled = []    # list[(key, SceneObject)] checked out for current frame
+
+        self._light_pool = []       # list[bpy.types.Object]
                      
         #create and place camera
         cam = bpy.data.cameras.new("Camera")
@@ -83,21 +93,52 @@ class DatasetRenderer:
 
         #load materials
         self.load_materials()
+        self._prepare_shape_templates()
+        self._prepare_light_pool()
         self.create_directory_tree()
 
+        self.set_render_settings()
+
+    def set_render_settings(self):
         # Set image resolution
         render_args = bpy.context.scene.render
-        render_args.resolution_x = args.images_width
-        render_args.resolution_y = args.images_height
+        render_args.resolution_x = self.args.images_width
+        render_args.resolution_y = self.args.images_height
+
+        # Enable depth and segmentation passes
+        view_layer = bpy.context.view_layer
+        view_layer.use_pass_z = self.args.create_depth == 1                     # depth
+        view_layer.use_pass_object_index = self.args.create_segmentations == 1  # segmentation
+
+        if self.args.create_depth == 1:
+            node = self.get_depth_out_node()
+            node.directory = self.depth_path
+        if self.args.create_segmentations == 1:
+            node = self.get_segmentation_out_node()
+            node.directory = self.seg_path
+
+    def get_depth_out_node(self):
+        scene = bpy.context.scene
+        tree = scene.compositing_node_group
+        return tree.nodes["Depth Output"]
+    
+    def get_segmentation_out_node(self):
+        scene = bpy.context.scene
+        tree = scene.compositing_node_group
+        return tree.nodes["Segmentation Output"]
 
     def create_directory_tree(self):
         #setup output directory tree
         os.makedirs(self.args.output_dir, exist_ok=True)
         os.makedirs(os.path.join(self.args.output_dir, self.args.split), exist_ok=True)
         os.makedirs(os.path.join(self.args.output_dir, self.args.split, "images"), exist_ok=True)
+        self.images_path = os.path.join(self.args.output_dir, self.args.split, "images")
         if self.args.create_segmentations == 1:
             os.makedirs(os.path.join(self.args.output_dir, self.args.split, "segmentation"), exist_ok=True)
+            self.seg_path = os.path.join(self.args.output_dir, self.args.split, "segmentation")
+        if self.args.create_depth == 1:
             os.makedirs(os.path.join(self.args.output_dir, self.args.split, "depth"), exist_ok=True)
+            self.depth_path = os.path.join(self.args.output_dir, self.args.split, "depth")
 
     def save_annotations(self):
         prefix = self.args.filename_prefix
@@ -116,12 +157,12 @@ class DatasetRenderer:
             self.state["img_index"] = img_index
             if not self.run: break
             prefix = args.filename_prefix #prefix for files
-            img_filename = f"{prefix + '_' if prefix is not None else ''}{img_index:010d}.png" #TODO: add support for other file formats
+            img_name_no_ext = f"{prefix + '_' if prefix is not None else ''}{img_index:010d}"
 
             #image metadata
             image_info = {
                 "id" : img_index,
-                "file_name" : img_filename,
+                "file_name" : img_name_no_ext,
                 "height" : args.images_height,
                 "width" : args.images_width,
                 "date_captured" : datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -154,28 +195,19 @@ class DatasetRenderer:
 
             self.populate_scene()
 
-            render_args = bpy.context.scene.render #set path for rendering
-            render_args.filepath = os.path.abspath(
-                os.path.join(args.output_dir, args.split, "images", img_filename)
-            )
+            # set RGB path
+            blender_scene = bpy.context.scene
+            blender_scene.render.filepath = os.path.join(self.images_path, img_name_no_ext + ".png")
+
+            # update node filenames
+            if self.args.create_depth == 1:
+                self.get_depth_out_node().file_name = img_name_no_ext + ".exr"
+            if self.args.create_segmentations == 1:
+                self.get_segmentation_out_node().file_name = img_name_no_ext + ".exr"
 
             if not args.test_mode:
-                while True:
-                    try:
-                        bpy.ops.render.render(write_still=True)
-                        if args.create_segmentations == 1 or args.create_depth == 1:
-                            gnd_truth = bpycv.render_data(render_image=False)
-                            if args.create_segmentations == 1:
-                                segmentation_path = os.path.join(args.output_dir, args.split, "segmentation", img_filename)
-                                cv2.imwrite(segmentation_path, np.uint8(gnd_truth["inst"]))
-                            if args.create_depth == 1:
-                                depth_path = os.path.join(args.output_dir, args.split, "depth", img_filename)
-                                cv2.imwrite(depth_path, np.uint16(gnd_truth["depth"] * 1000)) #save depth in mm
-
-                        break
-                    except Exception as e:
-                        print(e)
-                        
+                # render
+                bpy.ops.render.render(write_still=True)
                 self.clear_scene()
 
         self.save_annotations()
@@ -263,44 +295,53 @@ class DatasetRenderer:
 
             pos[-1] = self.get_offset_position(pos[-1])
 
-            #place light
-            light_data = bpy.data.lights.new(name=f"Light_{i}_data", type='POINT')
-            light_data.energy = random.uniform(rule["min_intensity"], rule["max_intensity"])
-            light_data.shadow_soft_size = rule["radius"]
-
-            light_object = bpy.data.objects.new(name=f"Light_{i}", object_data=light_data)
-            bpy.context.collection.objects.link(light_object)
-
+            # Reuse pre-created lights
+            light_object = self._light_pool[i]
+            try:
+                light_object.hide_set(False)
+                light_object.hide_render = False
+            except Exception:
+                pass
             light_object.location = pos[-1]
+            light_object.data.energy = random.uniform(rule["min_intensity"], rule["max_intensity"])
+            light_object.data.shadow_soft_size = rule["radius"]
 
         return pos
     
     def clear_scene(self):
-        #removes all placed shapes and lights
-        for obj in context.scene.objects:
-            if obj.name.startswith("OBJECT_") or obj.type == "LIGHT":
-                obj.select_set(True)
-            else:
-                obj.select_set(False)
+        # Return pooled objects to pool instead of deleting.
+        for key, sobj in self._active_pooled:
+            sobj.reset_for_pool(delete_custom_properties=("inst_id",))
+            self._shape_pools.setdefault(key, []).append(sobj)
+        self._active_pooled.clear()
 
-        bpy.ops.object.delete()
+        # Hide all lights; next frame will enable what is needed.
+        for light in self._light_pool:
+            try:
+                light.hide_set(True)
+                light.hide_render = True
+            except Exception:
+                pass
 
     def load_materials(self):
         # Loads all the combinations of materials and colors
         for mat_rule in self.rules.materials:
-            #load material file
-            filename = os.path.join(self.args.materials_dir, mat_rule["file"], "NodeTree", mat_rule["name"])
-            print(f"Loading material: {filename}")
-            bpy.ops.wm.append(filename=filename)
+            blend_path = os.path.join(self.args.materials_dir, mat_rule["file"])
+            print(f"Loading material group '{mat_rule['name']}' from: {blend_path}")
+            groups = self._asset_lib.load_node_groups(blend_path, [mat_rule["name"]])
+            if not groups:
+                raise Exception(f"Could not load node group '{mat_rule['name']}' from '{blend_path}'")
 
             allowed_colors = self.rules.get_material_allowed_colors(mat_rule["name"])
 
-            if len(allowed_colors) == 0: #material is already loaded with no color variants
-                return 
+            if len(allowed_colors) == 0: #material supports no color variants
+                continue
 
             for color in allowed_colors: #load all combinations of color and material
                 color_rule = self.rules.colors[color]
                 self.create_material(mat_rule, color_rule)
+
+        print("Finished loading materials")
 
     def get_material_full_name(self, mat_name, col_name=None, degradation_level=None, degradation_color=None):
         #Get the composite material name given its attributes
@@ -410,6 +451,7 @@ class DatasetRenderer:
 
             object_annotations = {
                 "id" : obj_index,
+                "segmentation_id" : obj_index - start_index + 1, #segmentation id starts from 1 for each scene, 0 is reserved for background
                 "shape" : {
                     "id" : shape_rule["id"],
                     "name" : shape_rule["name"],
@@ -442,13 +484,13 @@ class DatasetRenderer:
             
             #apply random flips
             if shape_rule["flip"] != "none":
-                self.random_flip(shape_rule["flip"])
+                self.random_flip(obj_blender, shape_rule["flip"])
 
             # Attempt random placement and rotation until the shape is correctly placed
             pos, rotation = self.try_shape_placement(obj_blender, shape_rule, object_annotations) 
 
             if pos is None:
-                bpy.data.objects.remove(obj_blender, do_unlink=True)
+                self._return_active_shape_to_pool(obj_blender)
                 continue
 
             object_annotations["position"] = pos
@@ -463,6 +505,8 @@ class DatasetRenderer:
                     material_blender = self.get_degraded_material(material_blender, degradation_level, degradation_color)
                 
                 obj_blender.data.materials.append(material_blender)
+            
+            self.apply_transform(obj_blender)
 
             if not decoys:
                 # Add annotations
@@ -480,7 +524,6 @@ class DatasetRenderer:
                 self.annotations["annotations"].append(obj_annotations)
                 self.annotations["scenes"][-1][group].append(object_annotations)
 
-            self.apply_transform(obj_blender)
 
     def get_offset_position(self, pos):
         offset_pos = [0, 0, 0]
@@ -499,8 +542,85 @@ class DatasetRenderer:
         return gnd_location, gnd_normal
 
     def apply_transform(self, obj, location=True, rotation=True, scale=True):
-        bpy.context.view_layer.objects.active = obj
-        bpy.ops.object.transform_apply(location=location, rotation=rotation, scale=scale)
+        # With pooling enabled, do not bake transforms into mesh data.
+        # Baking would permanently mutate pooled instances across reuses.
+        return
+
+    def _prepare_light_pool(self):
+        # Create max_num lights once and reuse them.
+        rule = self.rules.lights
+        max_lights = int(rule["max_num"])
+        if max_lights <= 0:
+            return
+
+        for i in range(max_lights):
+            light_data = bpy.data.lights.new(name=f"PooledLight_{i}_data", type='POINT')
+            light_data.energy = rule["min_intensity"]
+            light_data.shadow_soft_size = rule["radius"]
+
+            light_object = bpy.data.objects.new(name=f"PooledLight_{i}", object_data=light_data)
+            ensure_linked(light_object)
+            try:
+                light_object.hide_set(True)
+                light_object.hide_render = True
+            except Exception:
+                pass
+            self._light_pool.append(light_object)
+
+        print("Finished preparing light pool")
+
+    def _prepare_shape_templates(self):
+        # Load each unique (shape_dir, blend_file, object_name) only once.
+        unique = set()
+        for shape_rule in self.rules.objects:
+            unique.add((self.args.objects_dir, shape_rule["file"], shape_rule["name"]))
+        for shape_rule in self.rules.decoys:
+            unique.add((self.args.decoys_dir, shape_rule["file"], shape_rule["name"]))
+
+        for key in sorted(unique):
+            shape_dir, blend_file, object_name = key
+            print(f"Loading shape template '{object_name}' from: {blend_file}")
+            blend_path = os.path.join(shape_dir, blend_file)
+            objs = self._asset_lib.load_objects(blend_path, [object_name])
+            if not objs:
+                raise Exception(f"Could not load object '{object_name}' from '{blend_path}'")
+            template = objs[0]
+            # stable unique name to avoid collisions
+            template.name = f"TEMPLATE_{object_name}_{abs(hash(blend_path)) % 10**8}"
+            SceneObject(template).hide(True)
+            self._shape_templates[key] = template
+            self._shape_pools.setdefault(key, [])
+
+        print("Finished preparing shape templates")
+
+    def _checkout_shape_instance(self, key):
+        pool = self._shape_pools.setdefault(key, [])
+        if pool:
+            sobj = pool.pop()
+            sobj.hide(False)
+            sobj.clear_materials()
+            return sobj
+
+        template = self._shape_templates.get(key)
+        if template is None:
+            shape_dir, blend_file, object_name = key
+            blend_path = os.path.join(shape_dir, blend_file)
+            objs = self._asset_lib.load_objects(blend_path, [object_name])
+            if not objs:
+                raise Exception(f"Could not load object '{object_name}' from '{blend_path}'")
+            template = objs[0]
+            template.name = f"TEMPLATE_{object_name}_{abs(hash(blend_path)) % 10**8}"
+            self._shape_templates[key] = template
+
+        inst = template.copy()
+        try:
+            if getattr(template, "data", None) is not None and hasattr(template.data, "copy"):
+                inst.data = template.data.copy()
+        except Exception:
+            pass
+        inst.animation_data_clear()
+        ensure_linked(inst)
+        return SceneObject(inst).hide(False)
 
     def choose_random_appearance(self, shape_rule):
         # Returns random material and color rules
@@ -518,10 +638,10 @@ class DatasetRenderer:
     def add_shape(self, shape_dir, object_annotation):
         #add a shape to the scene
         name = object_annotation["shape"]["name"]
-        filename = os.path.join(shape_dir, object_annotation["shape"]["file"], "Object", name)
-        bpy.ops.wm.append(filename=filename)
-
-        blender_obj = bpy.data.objects[name]
+        blend_file = object_annotation["shape"]["file"]
+        key = (shape_dir, blend_file, name)
+        sobj = self._checkout_shape_instance(key)
+        blender_obj = sobj.obj
         blender_obj.name = f"OBJECT_{name}_{object_annotation['id']}"
 
         #assign instance id
@@ -539,10 +659,24 @@ class DatasetRenderer:
                 )
             )
             blender_obj["inst_id"] = cat_id
+            blender_obj.pass_index = object_annotation['segmentation_id']
         except ValueError:
             pass
 
+        self._active_pooled.append((key, sobj))
+
         return blender_obj
+
+    def _return_active_shape_to_pool(self, blender_obj):
+        for i, (key, sobj) in enumerate(self._active_pooled):
+            if sobj.obj == blender_obj:
+                self._active_pooled.pop(i)
+                sobj.reset_for_pool(delete_custom_properties=("inst_id",))
+                self._shape_pools.setdefault(key, []).append(sobj)
+                return
+
+        # Fallback: don't leak visible objects even if it's not tracked
+        SceneObject(blender_obj).reset_for_pool(delete_custom_properties=("inst_id",))
     
     def random_scale(self, obj, shape):
         #Scales currently active object according to provided rule
@@ -583,17 +717,20 @@ class DatasetRenderer:
 
         return rotate(obj, rotation)
     
-    def random_flip(self, flip_rule):
-        #mirrors currently active object based on the flip settings it receives
-        flips = (False, False, False)
+    def random_flip(self, obj, flip_rule):
+        # Mirrors the given object based on the flip settings it receives.
+        flips = [False, False, False]
         for flip_axis, flip_mode in flip_rule.items():
             if flip_mode == "random":
                 flip_mode = bool(random.getrandbits(1)) #random bool
-            
-            idx = ["yz", "xz", "xy"].index(flip_axis)
-            flips[idx] = flip_mode
 
-        bpy.ops.transform.mirror(constraint_axis=flips)
+            idx = ["yz", "xz", "xy"].index(flip_axis)
+            flips[idx] = bool(flip_mode)
+
+        bpy.ops.object.select_all(action='DESELECT')
+        obj.select_set(True)
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.transform.mirror(constraint_axis=tuple(flips))
 
     def snap_rotate(self, obj, gnd_norm, shape_rule):
         #Auto rotate so that the normal of  random fac
@@ -634,15 +771,17 @@ class DatasetRenderer:
 
             if shape_rule["random_rotation"]["auto_snap_face"]:
                 rotation = self.snap_rotate(obj, gnd_normal, shape_rule)
-            
+
             rotation = rotate(obj, shape_rule["fixed_rotation"]) #Apply fixed rotation
             rotation = self.random_rotate(obj, shape_rule) #Apply random rotation
 
+            z_off = shape_rule["z_offset"]
 
             if shape_rule["snap_to_plane"]:
                 #move object so that the lowest point of the shape touches the ground
-                z_off = project_ray_world(obj.location, mathutils.Vector((0,0, -1)))[0].z - SCENE_MAX_Z * 2
-                pos[2] = gnd_location.z - z_off
+                z_off -= project_ray_world(obj.location, mathutils.Vector((0,0, -1)))[0].z - SCENE_MAX_Z * 2
+            
+            pos[2] = gnd_location.z + z_off
 
             obj.location = pos
             return pos, rotation
@@ -673,37 +812,44 @@ class DatasetRenderer:
         return True
     
     def get_bounding_box(self, object):
-        corners_locations = [vert.co for vert in object.data.vertices]
-        lowest_values = [None , None]
-        highest_values = [None, None]
-        for corner in corners_locations:
-            #get position of corner in 2d camera view
-            c_2d = bpy_extras.object_utils.world_to_camera_view(bpy.context.scene, self.camera_obj, corner + object.location)
-            #transform to pixel coordinates
-            render = bpy.context.scene.render
-            c_2d = [
-                round(c_2d.x * render.resolution_x),
-                self.args.images_height - round(c_2d.y * render.resolution_y) #for some reason y is flipped
-            ]
+        scene = bpy.context.scene
+        render = scene.render
 
-            if lowest_values[0] is None: #if no value has been assigned yet
-                lowest_values = c_2d.copy()
-                highest_values = c_2d.copy()
-                continue
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        object_eval = object.evaluated_get(depsgraph)
 
-            if lowest_values[0] > c_2d[0]:
-                lowest_values[0] = c_2d[0]
-            elif highest_values[0] < c_2d[0]:
-                highest_values[0] = c_2d[0]
+        corners = [object_eval.matrix_world @ Vector(corner) for corner in object_eval.bound_box]
 
-            if lowest_values[1] > c_2d[1]:
-                lowest_values[1] = c_2d[1]
-            elif highest_values[1] < c_2d[1]:
-                highest_values[1] = c_2d[1]
+        coords_2d = []
+
+        scale = render.resolution_percentage / 100.0
+        W = int(render.resolution_x * scale)
+        H = int(render.resolution_y * scale)
+
+        for corner in corners:
+
+            c_2d = bpy_extras.object_utils.world_to_camera_view(
+                scene,
+                self.camera_obj,
+                corner
+            )
+
+            x = int(c_2d.x * W)
+            y = int((1.0 - c_2d.y) * H)  # FLIP Y FOR OPENCV
+
+            coords_2d.append((x, y))
+
+        xs = [c[0] for c in coords_2d]
+        ys = [c[1] for c in coords_2d]
+
+        x_min = max(min(xs), 0)
+        y_min = max(min(ys), 0)
+        x_max = min(max(xs), W)
+        y_max = min(max(ys), H)
 
         return [
-            lowest_values[0],
-            lowest_values[1],
-            highest_values[0] - lowest_values[0],
-            highest_values[1] - lowest_values[1]
+            x_min,
+            y_min,
+            x_max - x_min,
+            y_max - y_min
         ]
